@@ -211,6 +211,19 @@ init_state()
 API_URL = "http://localhost:8000/api"
 
 
+# ── File Icon Helper ──────────────────────────────────────────────────────────
+
+def _file_icon(name: str) -> str:
+    ext = Path(name).suffix.lower()
+    icons = {
+        ".py": "🐍", ".js": "🟨", ".ts": "💙", ".tsx": "⚛️",
+        ".html": "🌐", ".css": "🎨", ".json": "📋", ".md": "📝",
+        ".sh": "🔧", ".yaml": "⚙️", ".yml": "⚙️", ".sql": "🗄️",
+        ".go": "🐹", ".rs": "🦀", ".java": "☕",
+    }
+    return icons.get(ext, "📄")
+
+
 # ── Auth Helpers ──────────────────────────────────────────────────────────────
 
 def _auth_post(endpoint: str, data: dict) -> dict:
@@ -788,17 +801,6 @@ with st.sidebar:
         st.divider()
         st.caption("Milli Yapay Zeka v1.1.0")
         st.caption("Claude · Gemini · GLM · LangGraph")
-
-
-def _file_icon(name: str) -> str:
-    ext = Path(name).suffix.lower()
-    icons = {
-        ".py": "🐍", ".js": "🟨", ".ts": "💙", ".tsx": "⚛️",
-        ".html": "🌐", ".css": "🎨", ".json": "📋", ".md": "📝",
-        ".sh": "🔧", ".yaml": "⚙️", ".yml": "⚙️", ".sql": "🗄️",
-        ".go": "🐹", ".rs": "🦀", ".java": "☕",
-    }
-    return icons.get(ext, "📄")
 
 
 # ── Main Layout ───────────────────────────────────────────────────────────────
