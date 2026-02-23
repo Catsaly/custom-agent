@@ -6,6 +6,9 @@ import streamlit as st
 import asyncio
 import json
 import uuid
+import io
+import zipfile
+import random
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -190,6 +193,9 @@ def init_state():
         "auto_save": True,
         "theme": "dark",
         "sidebar_tab": "files",
+        "session_start": datetime.now().isoformat(),
+        "files_created": 0,
+        "msgs_sent": 0,
         # Auth state
         "auth_user": None,         # {"id", "email", "email_confirmed"}
         "auth_token": None,        # Supabase access_token
@@ -439,6 +445,90 @@ def model_color(model: str) -> str:
     return {"claude": "#ff6b35", "gemini": "#4285f4", "glm": "#00c4cc"}.get(model, "#6366f1")
 
 
+# ── Download Helpers ──────────────────────────────────────────────────────────
+
+_MIME = {
+    ".py": "text/x-python", ".js": "application/javascript",
+    ".ts": "text/typescript", ".tsx": "text/typescript",
+    ".html": "text/html", ".css": "text/css",
+    ".json": "application/json", ".md": "text/markdown",
+    ".yaml": "text/yaml", ".yml": "text/yaml",
+    ".sh": "text/x-sh", ".sql": "text/x-sql",
+    ".go": "text/x-go", ".rs": "text/x-rust",
+    ".toml": "text/toml", ".env": "text/plain",
+}
+
+
+def _mime(filename: str) -> str:
+    return _MIME.get(Path(filename).suffix.lower(), "text/plain")
+
+
+def _dl_btn(label: str, filename: str, content: str, key: str, **kwargs):
+    """Tek dosya indirme butonu."""
+    st.download_button(
+        label=label,
+        data=content.encode("utf-8"),
+        file_name=Path(filename).name,
+        mime=_mime(filename),
+        key=key,
+        **kwargs,
+    )
+
+
+def _make_zip() -> Optional[bytes]:
+    """Workspace'teki tüm dosyaları ZIP olarak paketler."""
+    files_data = api_get("/files/list")
+    if not files_data:
+        return None
+    buf = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files_data.get("files", []):
+            if f["type"] != "file":
+                continue
+            file_data = api_get("/files/read", path=f["path"])
+            if file_data and file_data.get("content") is not None:
+                zf.writestr(f["path"], file_data["content"])
+                count += 1
+    return buf.getvalue() if count > 0 else None
+
+
+# ── Engagement: Thinking Messages ─────────────────────────────────────────────
+
+_THINKING = [
+    "🧠 Yapay zeka düşünüyor, kahven hazır mı?",
+    "⚡ Milli motor çalışıyor, biraz sabır...",
+    "🔍 En iyi çözüm taranıyor...",
+    "🛠️ Kod mimarisi tasarlanıyor...",
+    "🚀 Türk AI gücüyle üretiliyor...",
+    "🌟 Sihir yapılıyor, bekle...",
+    "📐 Temiz kod kalıpları oluşturuluyor...",
+    "🎯 Probleme odaklanılıyor...",
+    "💡 Parlak bir çözüm geliyor...",
+    "🔧 Parçalar birleştiriliyor...",
+    "🏗️ Proje iskeleti kuruluyor...",
+    "🎨 Kodun estetiği de düşünülüyor...",
+]
+
+_TIPS = [
+    "💡 **İpucu:** Ctrl+Enter ile hızlı gönder",
+    "💡 **İpucu:** GitHub reposunu buraya yapıştırabilirsin",
+    "💡 **İpucu:** Proje oluşturduktan sonra ZIP ile indirebilirsin",
+    "💡 **İpucu:** Birden fazla dosya üretmek için 'proje oluştur' kullan",
+    "💡 **İpucu:** Hata mesajını yapıştırırsan otomatik düzeltir",
+    "💡 **İpucu:** 'Docker ekle' dersen Dockerfile da üretilir",
+    "💡 **İpucu:** Pomodoro ile 25 dk odaklanarak çalış!",
+]
+
+
+def _thinking_msg() -> str:
+    return random.choice(_THINKING)
+
+
+def _tip() -> str:
+    return random.choice(_TIPS)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     # Logo / Header
@@ -503,33 +593,59 @@ with st.sidebar:
                     horizontal=True, label_visibility="collapsed")
 
     if "Files" in stab:
-        st.markdown("**File Tree**")
-        tree_data = api_get("/files/tree")
-        if tree_data and tree_data.get("tree"):
-            def render_tree(node, depth=0):
-                indent = "&nbsp;" * (depth * 4)
-                icon = "📁" if node["type"] == "directory" else _file_icon(node["name"])
-                label = f"{indent}{icon} {node['name']}"
-                is_selected = st.session_state.current_file == node.get("path")
-                style = "color:#6366f1; font-weight:600;" if is_selected else ""
-                if node["type"] == "file":
-                    if st.button(f"{node['name']}", key=f"ft_{node['path']}",
-                                 use_container_width=True):
-                        st.session_state.current_file = node["path"]
-                        file_data = api_get("/files/read", path=node["path"])
-                        if file_data:
-                            st.session_state.file_content = file_data.get("content", "")
-                        st.rerun()
-                else:
-                    st.markdown(f"<div class='ftree-item'>{label}</div>", unsafe_allow_html=True)
-                for child in node.get("children", []):
-                    render_tree(child, depth + 1)
-            render_tree(tree_data["tree"])
-        else:
-            st.caption("No files yet. Ask AI to generate a project!")
+        st.markdown("**Dosyalar**")
+        files_list = api_get("/files/list")
+        file_items = [f for f in (files_list or {}).get("files", []) if f["type"] == "file"]
 
-        if st.button("📄 New File", use_container_width=True):
-            filename = st.text_input("Filename", key="new_file_input")
+        if file_items:
+            for f in file_items:
+                fc1, fc2 = st.columns([3, 1])
+                with fc1:
+                    icon = _file_icon(f["name"])
+                    is_sel = st.session_state.current_file == f["path"]
+                    if st.button(
+                        f"{icon} {f['name']}",
+                        key=f"sb_ft_{f['path']}",
+                        use_container_width=True,
+                        type="primary" if is_sel else "secondary",
+                    ):
+                        st.session_state.current_file = f["path"]
+                        fd = api_get("/files/read", path=f["path"])
+                        if fd:
+                            st.session_state.file_content = fd.get("content", "")
+                        st.rerun()
+                with fc2:
+                    fd2 = api_get("/files/read", path=f["path"]) if is_sel else None
+                    content2 = (fd2 or {}).get("content", "")
+                    if content2:
+                        _dl_btn("⬇️", f["name"], content2,
+                                key=f"sb_dl_{f['path']}", use_container_width=True)
+                    else:
+                        st.markdown(
+                            f"<div style='height:38px'></div>", unsafe_allow_html=True
+                        )
+
+            # ZIP indir
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            if st.button("📦 ZIP İndir", use_container_width=True, key="sidebar_zip_btn"):
+                with st.spinner("ZIP hazırlanıyor..."):
+                    zip_bytes = _make_zip()
+                if zip_bytes:
+                    st.download_button(
+                        "💾 ZIP İndir",
+                        data=zip_bytes,
+                        file_name="workspace.zip",
+                        mime="application/zip",
+                        key="sidebar_zip_dl",
+                        use_container_width=True,
+                    )
+                else:
+                    st.warning("İndirilecek dosya bulunamadı.")
+        else:
+            st.caption("Henüz dosya yok. AI'dan proje üretmesini iste!")
+
+        if st.button("📄 Yeni Dosya", use_container_width=True, key="sb_new_file"):
+            filename = st.text_input("Dosya adı", key="new_file_input")
             if filename:
                 api_post("/files/write", {"path": filename, "content": ""})
                 st.rerun()
@@ -562,19 +678,116 @@ with st.sidebar:
                 st.warning("Enter a repository name first")
 
     else:  # Settings
-        st.markdown("**Settings**")
-        st.session_state.auto_save = st.toggle("Auto Save", value=st.session_state.auto_save)
-        st.selectbox("Theme", ["Dark", "Light"], index=0, disabled=True)
-        st.markdown("**About**")
-        st.caption("CodeCraft AI v1.0.0")
-        st.caption("Powered by Claude, Gemini & GLM")
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        st.markdown("**⚙️ Ayarlar**")
+        st.session_state.auto_save = st.toggle("Otomatik Kaydet", value=st.session_state.auto_save)
+        if st.button("🗑️ Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
-        if st.button("🆕 New Session", use_container_width=True):
+        if st.button("🆕 Yeni Oturum", use_container_width=True):
             st.session_state.session_id = str(uuid.uuid4())
             st.session_state.messages = []
             st.rerun()
+
+        st.divider()
+
+        # ── Pomodoro Focus Timer ──────────────────────────────────────────────
+        st.markdown("**🍅 Pomodoro Fokus Zamanlayıcı**")
+        st.caption("25 dk çalış, 5 dk mola. Odaklanmak için ideal.")
+        import streamlit.components.v1 as components
+        components.html("""
+<style>
+  body { margin:0; background:transparent; font-family:'Inter',sans-serif; }
+  #pomo { display:flex; flex-direction:column; align-items:center; gap:10px; padding:12px 0; }
+  #ptime {
+    font-size:42px; font-weight:700; color:#f8fafc;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 20px rgba(99,102,241,0.6);
+  }
+  #pmode { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; }
+  .pbar-bg { width:180px; height:6px; background:#1e293b; border-radius:3px; }
+  .pbar-fg { height:6px; background:linear-gradient(90deg,#6366f1,#8b5cf6); border-radius:3px; transition:width 1s linear; }
+  .pbtn {
+    padding:8px 20px; border:none; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:600; transition:all 0.2s;
+  }
+  #startbtn { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; }
+  #resetbtn { background:#1e293b; color:#94a3b8; border:1px solid #334155; }
+  .pbtn:hover { transform:translateY(-1px); opacity:0.9; }
+  #pcount { font-size:11px; color:#64748b; }
+</style>
+<div id="pomo">
+  <div id="pmode">🍅 Çalışma Süresi</div>
+  <div id="ptime">25:00</div>
+  <div class="pbar-bg"><div class="pbar-fg" id="pbar" style="width:100%"></div></div>
+  <div style="display:flex;gap:8px;">
+    <button class="pbtn" id="startbtn" onclick="toggleTimer()">▶ Başla</button>
+    <button class="pbtn" id="resetbtn" onclick="resetTimer()">↺ Sıfırla</button>
+  </div>
+  <div id="pcount">Tamamlanan: <span id="cycles">0</span> 🍅</div>
+</div>
+<script>
+  const WORK = 25 * 60, BREAK = 5 * 60;
+  let total = WORK, left = WORK, running = false, timer = null, cycles = 0, isWork = true;
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function update(){
+    document.getElementById('ptime').textContent = pad(Math.floor(left/60))+':'+pad(left%60);
+    const pct = Math.round((left/total)*100);
+    document.getElementById('pbar').style.width = pct+'%';
+    document.getElementById('pmode').textContent = isWork ? '🍅 Çalışma Süresi' : '☕ Mola Zamanı';
+    document.getElementById('pbar').style.background = isWork
+      ? 'linear-gradient(90deg,#6366f1,#8b5cf6)'
+      : 'linear-gradient(90deg,#10b981,#059669)';
+  }
+  function tick(){
+    if(left <= 0){
+      clearInterval(timer); running = false;
+      document.getElementById('startbtn').textContent = '▶ Başla';
+      if(isWork){ cycles++; document.getElementById('cycles').textContent=cycles; }
+      isWork = !isWork; total = isWork ? WORK : BREAK; left = total;
+      update();
+      if(typeof Notification!=='undefined' && Notification.permission==='granted'){
+        new Notification(isWork ? '🍅 Çalışma başlıyor!' : '☕ Mola zamanı!');
+      }
+      return;
+    }
+    left--; update();
+  }
+  function toggleTimer(){
+    if(running){ clearInterval(timer); running=false; document.getElementById('startbtn').textContent='▶ Devam'; }
+    else { timer=setInterval(tick,1000); running=true; document.getElementById('startbtn').textContent='⏸ Duraklat';
+      if(typeof Notification!=='undefined') Notification.requestPermission(); }
+  }
+  function resetTimer(){ clearInterval(timer); running=false; isWork=true; total=WORK; left=WORK; update(); document.getElementById('startbtn').textContent='▶ Başla'; }
+  update();
+</script>
+        """, height=200)
+
+        st.divider()
+        # ── Mini Stats ────────────────────────────────────────────────────────
+        st.markdown("**📊 Oturum İstatistikleri**")
+        try:
+            start = datetime.fromisoformat(st.session_state.get("session_start", datetime.now().isoformat()))
+            elapsed = int((datetime.now() - start).total_seconds() / 60)
+        except Exception:
+            elapsed = 0
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"""
+            <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:22px;font-weight:700;color:#6366f1;">{len(st.session_state.messages)}</div>
+                <div style="font-size:10px;color:#64748b;">Mesaj</div>
+            </div>""", unsafe_allow_html=True)
+        with sc2:
+            st.markdown(f"""
+            <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:22px;font-weight:700;color:#10b981;">{elapsed}</div>
+                <div style="font-size:10px;color:#64748b;">Dakika</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.divider()
+        st.caption("Milli Yapay Zeka v1.1.0")
+        st.caption("Claude · Gemini · GLM · LangGraph")
 
 
 def _file_icon(name: str) -> str:
@@ -686,7 +899,7 @@ with tab_chat:
         })
 
         # Get AI response
-        with st.spinner(f"{model_icon(st.session_state.model)} {st.session_state.model.upper()} is thinking..."):
+        with st.spinner(f"{model_icon(st.session_state.model)} {_thinking_msg()}"):
             history = [
                 {"role": m["role"], "content": m["content"]}
                 for m in st.session_state.messages[:-1]
@@ -698,13 +911,17 @@ with tab_chat:
                 "workspace_path": st.session_state.workspace_path,
             })
 
-        response_text = result.get("response", "Sorry, I couldn't process that.") if result else "API error — is the backend running?"
+        response_text = result.get("response", "Üzgünüm, işleyemedim.") if result else "API hatası — backend çalışıyor mu?"
         st.session_state.messages.append({
             "role": "assistant",
             "content": response_text,
             "model": st.session_state.model,
             "timestamp": datetime.now().strftime("%H:%M"),
         })
+        st.session_state.msgs_sent += 1
+        # Her 5 mesajda bir ipucu göster
+        if st.session_state.msgs_sent % 5 == 0:
+            st.info(_tip())
         st.rerun()
 
     # Image upload
@@ -779,31 +996,31 @@ with tab_editor:
             )
 
             # Toolbar
-            tcols = st.columns(5)
+            tcols = st.columns(6)
             with tcols[0]:
-                if st.button("💾 Save"):
+                if st.button("💾 Kaydet"):
                     result = api_post("/files/write", {
                         "path": st.session_state.current_file,
                         "content": edited,
                     })
                     if result:
                         st.session_state.file_content = edited
-                        st.success("Saved!")
+                        st.success("Kaydedildi!")
             with tcols[1]:
-                if st.button("▶ Run"):
+                if st.button("▶ Çalıştır"):
                     lang = Path(st.session_state.current_file).suffix.lstrip(".")
                     result = api_post("/files/run", {"code": edited, "language": lang})
                     if result:
                         if result.get("success"):
-                            st.success(f"Output:\n```\n{result.get('output', '')}\n```")
+                            st.success(f"Çıktı:\n```\n{result.get('output', '')}\n```")
                         else:
-                            st.error(f"Error:\n```\n{result.get('error', '')}\n```")
+                            st.error(f"Hata:\n```\n{result.get('error', '')}\n```")
             with tcols[2]:
                 if st.button("🔍 Lint"):
                     lang = Path(st.session_state.current_file).suffix.lstrip(".")
                     result = api_post("/files/lint", {"code": edited, "language": lang})
                     if result:
-                        st.success("No syntax errors!") if result.get("valid") else st.error(result.get("errors", ""))
+                        st.success("Hata yok!") if result.get("valid") else st.error(result.get("errors", ""))
             with tcols[3]:
                 if st.button("✨ Format"):
                     lang = Path(st.session_state.current_file).suffix.lstrip(".")
@@ -812,14 +1029,39 @@ with tab_editor:
                         st.session_state.file_content = result.get("formatted", edited)
                         st.rerun()
             with tcols[4]:
-                if st.button("🤖 AI Fix"):
-                    with st.spinner("Analyzing..."):
+                if st.button("🤖 AI Düzelt"):
+                    with st.spinner(_thinking_msg()):
                         result = api_post("/chat/explain", {
                             "code": edited,
                             "model": st.session_state.model,
                         })
                         if result:
                             st.info(result.get("explanation", ""))
+            with tcols[5]:
+                _dl_btn(
+                    "⬇️ İndir",
+                    st.session_state.current_file,
+                    edited,
+                    key=f"editor_dl_{st.session_state.current_file}",
+                )
+
+            # ZIP ile tüm workspace'i indir
+            with st.expander("📦 Tüm projeyi ZIP indir"):
+                st.caption("Workspace'teki tüm dosyalar tek ZIP dosyasında paketlenir.")
+                if st.button("📦 ZIP Oluştur", key="editor_zip_btn"):
+                    with st.spinner("ZIP hazırlanıyor..."):
+                        zip_bytes = _make_zip()
+                    if zip_bytes:
+                        st.download_button(
+                            f"💾 workspace.zip ({len(zip_bytes)//1024}KB) İndir",
+                            data=zip_bytes,
+                            file_name=f"{st.session_state.project_name.replace(' ', '_')}.zip",
+                            mime="application/zip",
+                            key="editor_zip_dl",
+                            use_container_width=True,
+                        )
+                    else:
+                        st.warning("İndirilecek dosya bulunamadı.")
         else:
             st.markdown("""
             <div style="text-align:center; padding:60px; color:#64748b;">
@@ -864,32 +1106,54 @@ with tab_generate:
             if extras:
                 full_desc += "\n\nAlso: " + ". ".join(extras)
 
-            with st.spinner(f"{model_icon(gen_model)} Generating project with {gen_model.upper()}..."):
-                result = api_post("/chat/generate-project", {
-                    "description": full_desc,
-                    "model": gen_model,
-                    "workspace_path": gen_workspace,
-                })
+            prog = st.progress(0, text=_thinking_msg())
+            prog.progress(20, text="🏗️ Proje mimarisi hazırlanıyor...")
+            result = api_post("/chat/generate-project", {
+                "description": full_desc,
+                "model": gen_model,
+                "workspace_path": gen_workspace,
+            })
+            prog.progress(80, text="📁 Dosyalar yazılıyor...")
 
             if result:
-                st.success("Project generated! Check the Files tab.")
+                prog.progress(100, text="✅ Tamamlandı!")
+                st.success("🎉 Proje oluşturuldu! Dosyalar sekmesine bak.")
                 st.session_state.workspace_path = gen_workspace
+                st.session_state.files_created += 1
+                # ZIP indirme butonu hemen göster
+                st.markdown("### 📦 Projeyi İndir")
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    with st.spinner("ZIP hazırlanıyor..."):
+                        zip_bytes = _make_zip()
+                    if zip_bytes:
+                        st.download_button(
+                            "📦 ZIP Olarak İndir",
+                            data=zip_bytes,
+                            file_name=f"{gen_workspace.replace('/', '_')}.zip",
+                            mime="application/zip",
+                            key="gen_zip_dl",
+                            use_container_width=True,
+                            type="primary",
+                        )
+                with col_dl2:
+                    if st.button("📁 Editörde Aç", key="gen_open_editor", use_container_width=True):
+                        st.session_state.workspace_path = gen_workspace
+                        st.rerun()
             else:
-                # Fallback: do it via chat
-                st.info("Generating via chat stream...")
-                with st.spinner("Building your project..."):
-                    result = api_post("/chat/message", {
-                        "prompt": f"Generate a complete project: {full_desc}\n\nFor each file use format: <FILE path=\"...\">content</FILE>",
-                        "model": gen_model,
-                        "messages": [],
-                        "workspace_path": gen_workspace,
-                    })
+                prog.progress(40, text="⚡ Chat ile üretiliyor...")
+                result = api_post("/chat/message", {
+                    "prompt": f"Generate a complete project: {full_desc}\n\nFor each file use format: <FILE path=\"...\">content</FILE>",
+                    "model": gen_model,
+                    "messages": [],
+                    "workspace_path": gen_workspace,
+                })
                 if result:
-                    st.success("✅ Project generated!")
-                    st.markdown("**AI Response:**")
+                    prog.progress(100, text="✅ Tamamlandı!")
+                    st.success("✅ Proje oluşturuldu!")
                     st.markdown(result.get("response", ""))
         else:
-            st.warning("Please describe your project first")
+            st.warning("Önce projeyi açıkla!")
 
     # Templates
     st.divider()
