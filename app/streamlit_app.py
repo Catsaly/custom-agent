@@ -1,5 +1,5 @@
 """
-CodeCraft AI — Lovable-style AI Coding Platform
+Milli Yapay Zeka — Yerli AI Kodlama Platformu
 Built with Streamlit + FastAPI + Claude + Gemini + GLM + Supabase + Bootstrap
 """
 import streamlit as st
@@ -13,8 +13,8 @@ from typing import Optional
 
 # ── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CodeCraft AI",
-    page_icon="⚡",
+    page_title="Milli Yapay Zeka",
+    page_icon="🇹🇷",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -185,7 +185,7 @@ def init_state():
         "current_file": None,
         "file_content": "",
         "workspace_path": "workspace/default",
-        "project_name": "My Project",
+        "project_name": "Milli Yapay Zeka",
         "github_repo": "",
         "auto_save": True,
         "theme": "dark",
@@ -228,9 +228,9 @@ with st.sidebar:
     # Logo / Header
     st.markdown("""
     <div style="padding:16px 0 24px; text-align:center;">
-        <div style="font-size:32px;">⚡</div>
-        <div style="font-size:20px; font-weight:700; color:#f8fafc; letter-spacing:-0.5px;">CodeCraft AI</div>
-        <div style="font-size:11px; color:#94a3b8;">Lovable-style AI Platform</div>
+        <div style="font-size:32px;">🇹🇷</div>
+        <div style="font-size:20px; font-weight:700; color:#f8fafc; letter-spacing:-0.5px;">Milli Yapay Zeka</div>
+        <div style="font-size:11px; color:#94a3b8;">Yerli AI Kodlama Platformu</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -378,9 +378,9 @@ with tab_chat:
         if not st.session_state.messages:
             st.markdown("""
             <div style="text-align:center; padding:60px 20px; color:#64748b;">
-                <div style="font-size:48px; margin-bottom:16px;">⚡</div>
-                <div style="font-size:20px; font-weight:600; color:#94a3b8; margin-bottom:8px;">Welcome to CodeCraft AI</div>
-                <div style="font-size:14px;">Ask me to build anything — web apps, APIs, scripts, and more.</div>
+                <div style="font-size:48px; margin-bottom:16px;">🇹🇷</div>
+                <div style="font-size:20px; font-weight:600; color:#94a3b8; margin-bottom:8px;">Milli Yapay Zeka'ya Hoş Geldiniz</div>
+                <div style="font-size:14px;">Web uygulaması, API, script — ne istersen söyle, hemen üretelim.</div>
                 <div style="margin-top:24px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
                     <span style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer;">Build a FastAPI REST API</span>
                     <span style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer;">Create a React dashboard</span>

@@ -1,0 +1,29 @@
+app = "milli-yapay-zeka"
+primary_region = "ams"  # Amsterdam — Türkiye'ye en yakın ücretsiz bölge
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  APP_PORT = "8000"
+  DEBUG = "false"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true   # Ücretsiz plan: kullanılmadığında durdurur
+  auto_start_machines = true
+  min_machines_running = 0    # 0 = en ucuz (cold start var)
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512   # En küçük = en ucuz

@@ -44,3 +44,4 @@ uploads/
 *.key
 *.pem
 secrets.json
+.streamlit/secrets.toml

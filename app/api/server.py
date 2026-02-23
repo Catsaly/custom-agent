@@ -7,8 +7,8 @@ from pathlib import Path
 from app.api.routes import chat, files, github, images
 
 app = FastAPI(
-    title="CodeCraft AI",
-    description="Lovable-style AI coding platform powered by Claude, Gemini & GLM",
+    title="Milli Yapay Zeka",
+    description="Yerli AI Kodlama Platformu — Claude, Gemini & GLM ile güçlendirilmiş",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -37,7 +37,7 @@ if static_path.exists():
 @app.get("/")
 async def root():
     return {
-        "name": "CodeCraft AI",
+        "name": "Milli Yapay Zeka",
         "version": "1.0.0",
         "docs": "/docs",
         "models": ["claude", "gemini", "glm"],
