@@ -104,4 +104,5 @@ async def review_node(state: AgentState) -> dict:
             "review_feedback": None,
             "current_node": "review",
             "error": f"İnceleme hatası: {e}",
+            "messages": [{"role": "system", "content": f"[İnceleme Hatası] {e}"}],
         }

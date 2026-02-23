@@ -134,7 +134,7 @@ async def list_project_files(directory: str = ".") -> str:
         Dosya/dizin listesi
     """
     try:
-        items = await _file_tools.list_directory(directory)
+        items = await _file_tools.list_files(directory)
         return json.dumps(items, ensure_ascii=False, indent=2)
     except Exception as e:
         return f"[Dizin listeleme hatası: {e}]"
@@ -153,7 +153,8 @@ async def search_web(query: str) -> str:
         Arama sonuçları
     """
     try:
-        return await _search_tools.search(query)
+        results = await _search_tools.web_search(query)
+        return _search_tools.format_search_results(results)
     except Exception as e:
         return f"[Web arama hatası: {e}]"
 
@@ -170,8 +171,8 @@ async def search_documentation(library: str, query: str) -> str:
         İlgili doküman bölümleri
     """
     try:
-        full_query = f"{library} documentation {query}"
-        return await _search_tools.search(full_query)
+        results = await _search_tools.search_docs(query, technology=library)
+        return _search_tools.format_search_results(results)
     except Exception as e:
         return f"[Doküman arama hatası: {e}]"
 

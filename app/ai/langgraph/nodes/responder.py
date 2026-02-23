@@ -6,7 +6,7 @@ Son yanıtı formatlayıp kullanıcıya sunar.
 from app.ai.langgraph.state import AgentState
 
 
-def respond_node(state: AgentState) -> dict:
+async def respond_node(state: AgentState) -> dict:
     """Ham çıktıyı kullanıcıya sunulmak üzere formatlar."""
     raw = state.get("raw_response", "")
     generated_files = state.get("generated_files", {})

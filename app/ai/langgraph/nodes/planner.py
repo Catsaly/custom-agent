@@ -76,4 +76,5 @@ async def plan_node(state: AgentState) -> dict:
             "plan": f"Plan: {task}",
             "current_node": "plan",
             "error": f"Planlama hatası: {e}",
+            "messages": [{"role": "system", "content": f"[Plan Hatası] {e}"}],
         }

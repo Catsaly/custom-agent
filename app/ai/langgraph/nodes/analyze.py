@@ -94,6 +94,7 @@ async def analyze_node(state: AgentState) -> dict:
             "github_file": None,
             "current_node": "analyze",
             "error": f"Analiz hatası: {e}",
+            "messages": [{"role": "system", "content": f"[Analiz Hatası] {e}"}],
         }
 
 

@@ -4,8 +4,8 @@ uvicorn[standard]==0.32.1
 streamlit==1.41.1
 
 # LangGraph Agent
-langgraph==0.2.55
-langchain-core==0.3.29
+langgraph>=1.0.0
+langchain-core>=1.0.0
 
 # AI Models
 anthropic==0.42.0
