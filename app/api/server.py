@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.api.routes import chat, files, github, images
 from app.api.routes import agent as agent_routes
+from app.api.routes import auth as auth_routes
 
 app = FastAPI(
     title="Milli Yapay Zeka",
@@ -29,6 +30,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(github.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
 app.include_router(agent_routes.router, prefix="/api")
+app.include_router(auth_routes.router, prefix="/api")
 
 # Static files
 static_path = Path(__file__).parent.parent.parent / "static"

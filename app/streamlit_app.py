@@ -190,6 +190,11 @@ def init_state():
         "auto_save": True,
         "theme": "dark",
         "sidebar_tab": "files",
+        # Auth state
+        "auth_user": None,         # {"id", "email", "email_confirmed"}
+        "auth_token": None,        # Supabase access_token
+        "auth_refresh": None,      # Supabase refresh_token
+        "auth_tab": "login",       # "login" | "register" | "reset"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -198,6 +203,217 @@ def init_state():
 init_state()
 
 API_URL = "http://localhost:8000/api"
+
+
+# ── Auth Helpers ──────────────────────────────────────────────────────────────
+
+def _auth_post(endpoint: str, data: dict) -> dict:
+    """Auth API'sine POST isteği gönderir."""
+    try:
+        r = requests.post(f"{API_URL}/auth/{endpoint}", json=data, timeout=15)
+        return r.json()
+    except Exception as e:
+        return {"detail": f"Bağlantı hatası: {e}"}
+
+
+def _do_login(email: str, password: str) -> tuple[bool, str]:
+    """Giriş yapar; (başarılı, mesaj) döner."""
+    res = _auth_post("login", {"email": email, "password": password})
+    if "session" in res and res["session"]:
+        st.session_state.auth_user = res["user"]
+        st.session_state.auth_token = res["session"]["access_token"]
+        st.session_state.auth_refresh = res["session"]["refresh_token"]
+        return True, "Hoş geldiniz!"
+    return False, res.get("detail", "Giriş başarısız.")
+
+
+def _do_register(email: str, password: str) -> tuple[bool, str]:
+    """Kayıt yapar; (başarılı, mesaj) döner."""
+    res = _auth_post("register", {"email": email, "password": password})
+    if res.get("session"):
+        st.session_state.auth_user = res["user"]
+        st.session_state.auth_token = res["session"]["access_token"]
+        st.session_state.auth_refresh = res["session"]["refresh_token"]
+        return True, "Kayıt başarılı! Hoş geldiniz."
+    if res.get("email_confirmation_required"):
+        return True, "Kayıt başarılı! Email adresinizi onaylayın, ardından giriş yapın."
+    return False, res.get("detail", "Kayıt başarısız.")
+
+
+def _do_logout():
+    """Oturumu temizler."""
+    try:
+        token = st.session_state.get("auth_token")
+        if token:
+            requests.post(
+                f"{API_URL}/auth/logout",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5,
+            )
+    except Exception:
+        pass
+    st.session_state.auth_user = None
+    st.session_state.auth_token = None
+    st.session_state.auth_refresh = None
+
+
+def _do_reset_password(email: str) -> tuple[bool, str]:
+    """Şifre sıfırlama maili gönderir."""
+    res = _auth_post("reset-password", {"email": email})
+    if "message" in res:
+        return True, res["message"]
+    return False, res.get("detail", "İşlem başarısız.")
+
+
+# ── Login / Register Page ─────────────────────────────────────────────────────
+
+def show_auth_page():
+    """Giriş/kayıt ekranını gösterir. True dönerse app'e geçilir."""
+
+    st.markdown("""
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center;
+                min-height:60vh; padding:40px 0 20px;">
+        <div style="font-size:56px; margin-bottom:8px;">🇹🇷</div>
+        <div style="font-size:28px; font-weight:700; color:#f8fafc; letter-spacing:-1px; margin-bottom:4px;">
+            Milli Yapay Zeka
+        </div>
+        <div style="font-size:14px; color:#94a3b8; margin-bottom:40px;">
+            Yerli AI Kodlama Platformu
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Ekranı ortala
+    _, col, _ = st.columns([1, 1.4, 1])
+
+    with col:
+        tab = st.session_state.auth_tab
+
+        # Sekme butonları
+        t1, t2, t3 = st.columns(3)
+        with t1:
+            if st.button("Giriş Yap", use_container_width=True,
+                         type="primary" if tab == "login" else "secondary"):
+                st.session_state.auth_tab = "login"; st.rerun()
+        with t2:
+            if st.button("Kayıt Ol", use_container_width=True,
+                         type="primary" if tab == "register" else "secondary"):
+                st.session_state.auth_tab = "register"; st.rerun()
+        with t3:
+            if st.button("Şifre Sıfırla", use_container_width=True,
+                         type="primary" if tab == "reset" else "secondary"):
+                st.session_state.auth_tab = "reset"; st.rerun()
+
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+        # ── Giriş Yap ────────────────────────────────────────────────────────
+        if tab == "login":
+            st.markdown("""
+            <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:28px;">
+                <div style="font-size:16px; font-weight:600; color:#f8fafc; margin-bottom:20px;">
+                    Hesabına giriş yap
+                </div>
+            """, unsafe_allow_html=True)
+
+            with st.form("login_form", clear_on_submit=False):
+                email = st.text_input("Email", placeholder="ornek@email.com",
+                                      label_visibility="visible")
+                password = st.text_input("Şifre", type="password", placeholder="••••••••",
+                                         label_visibility="visible")
+                submitted = st.form_submit_button("Giriş Yap", use_container_width=True,
+                                                  type="primary")
+
+            if submitted:
+                if not email or not password:
+                    st.error("Email ve şifre gereklidir.")
+                else:
+                    with st.spinner("Giriş yapılıyor..."):
+                        ok, msg = _do_login(email, password)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Kayıt Ol ─────────────────────────────────────────────────────────
+        elif tab == "register":
+            st.markdown("""
+            <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:28px;">
+                <div style="font-size:16px; font-weight:600; color:#f8fafc; margin-bottom:20px;">
+                    Yeni hesap oluştur
+                </div>
+            """, unsafe_allow_html=True)
+
+            with st.form("register_form", clear_on_submit=False):
+                email = st.text_input("Email", placeholder="ornek@email.com")
+                password = st.text_input("Şifre", type="password",
+                                         placeholder="En az 6 karakter")
+                password2 = st.text_input("Şifre (tekrar)", type="password",
+                                          placeholder="Şifreyi tekrar gir")
+                submitted = st.form_submit_button("Kayıt Ol", use_container_width=True,
+                                                  type="primary")
+
+            if submitted:
+                if not email or not password:
+                    st.error("Tüm alanlar zorunludur.")
+                elif len(password) < 6:
+                    st.error("Şifre en az 6 karakter olmalıdır.")
+                elif password != password2:
+                    st.error("Şifreler eşleşmiyor.")
+                else:
+                    with st.spinner("Kayıt yapılıyor..."):
+                        ok, msg = _do_register(email, password)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Şifre Sıfırla ────────────────────────────────────────────────────
+        elif tab == "reset":
+            st.markdown("""
+            <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:28px;">
+                <div style="font-size:16px; font-weight:600; color:#f8fafc; margin-bottom:8px;">
+                    Şifre sıfırlama
+                </div>
+                <div style="font-size:13px; color:#94a3b8; margin-bottom:20px;">
+                    Email adresinize sıfırlama bağlantısı göndereceğiz.
+                </div>
+            """, unsafe_allow_html=True)
+
+            with st.form("reset_form", clear_on_submit=False):
+                email = st.text_input("Email", placeholder="ornek@email.com")
+                submitted = st.form_submit_button("Mail Gönder", use_container_width=True,
+                                                  type="primary")
+
+            if submitted:
+                if not email:
+                    st.error("Email adresi gereklidir.")
+                else:
+                    with st.spinner("Gönderiliyor..."):
+                        ok, msg = _do_reset_password(email)
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="text-align:center; margin-top:20px; font-size:12px; color:#64748b;">
+            Supabase Auth ile güvenli giriş
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ── Auth Gate — giriş yapılmamışsa login sayfasını göster ────────────────────
+if not st.session_state.get("auth_user"):
+    show_auth_page()
+    st.stop()
 
 
 def api_get(path: str, **params) -> Optional[dict]:
@@ -233,6 +449,28 @@ with st.sidebar:
         <div style="font-size:11px; color:#94a3b8;">Yerli AI Kodlama Platformu</div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Kullanıcı Bilgisi + Çıkış
+    user = st.session_state.get("auth_user")
+    if user:
+        email_short = user["email"][:24] + "…" if len(user["email"]) > 24 else user["email"]
+        confirmed_badge = (
+            '<span style="color:#10b981; font-size:10px;">✔ Onaylı</span>'
+            if user.get("email_confirmed")
+            else '<span style="color:#f59e0b; font-size:10px;">⚠ Onay Bekliyor</span>'
+        )
+        st.markdown(f"""
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:10px;
+                    padding:10px 14px; margin-bottom:12px;">
+            <div style="font-size:11px; color:#94a3b8; margin-bottom:2px;">Giriş yapıldı</div>
+            <div style="font-size:13px; font-weight:600; color:#f8fafc;">{email_short}</div>
+            <div style="margin-top:4px;">{confirmed_badge}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🚪 Çıkış Yap", use_container_width=True, key="logout_btn"):
+            _do_logout()
+            st.rerun()
+        st.divider()
 
     # Model Selector
     st.markdown("<div style='font-size:12px; color:#94a3b8; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;'>AI Model</div>", unsafe_allow_html=True)
