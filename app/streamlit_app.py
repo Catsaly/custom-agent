@@ -176,6 +176,7 @@ code { font-family: 'JetBrains Mono', monospace !important; }
     border-radius: 10px 10px 0 0;
 }
 </style>
+<script src="/static/js/main.js" defer></script>
 """
 st.markdown(BOOTSTRAP_CSS, unsafe_allow_html=True)
 
