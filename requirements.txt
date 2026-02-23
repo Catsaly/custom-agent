@@ -1,0 +1,40 @@
+# Core Framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+streamlit==1.41.1
+
+# AI Models
+anthropic==0.42.0
+google-generativeai==0.8.3
+zhipuai==2.1.5.20230904
+
+# GitHub Integration
+PyGithub==2.5.0
+gitpython==3.1.43
+
+# Database
+supabase==2.11.0
+
+# File & Image Processing
+Pillow==11.1.0
+python-multipart==0.0.20
+aiofiles==24.1.0
+
+# HTTP & Utils
+httpx==0.28.1
+requests==2.32.3
+python-dotenv==1.0.1
+pydantic==2.10.5
+pydantic-settings==2.7.0
+
+# Search
+duckduckgo-search==7.3.2
+
+# Code Processing
+pygments==2.19.1
+black==24.10.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.2
+httpx==0.28.1
