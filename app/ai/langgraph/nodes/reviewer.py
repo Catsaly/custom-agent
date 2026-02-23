@@ -55,6 +55,7 @@ async def review_node(state: AgentState) -> dict:
             "review_passed": False,
             "review_feedback": "İncelenecek kod bulunamadı.",
             "current_node": "review",
+            "messages": [{"role": "system", "content": "[İnceleme] İncelenecek kod bulunamadı."}],
         }
 
     # İnceleme içeriği hazırla

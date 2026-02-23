@@ -4,7 +4,6 @@ LangGraph Agent State
 Tüm node'lar arasında paylaşılan durum tanımı.
 """
 from typing import TypedDict, Annotated, Optional, Dict, List, Any
-import operator
 
 
 def _add_messages(left: List[Dict], right: List[Dict]) -> List[Dict]:
