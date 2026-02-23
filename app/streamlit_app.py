@@ -816,8 +816,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Main Tabs ─────────────────────────────────────────────────────────────────
-tab_chat, tab_editor, tab_generate, tab_tools = st.tabs([
-    "💬 Chat", "📝 Editor", "🚀 Generate", "🔧 Tools"
+tab_chat, tab_editor, tab_generate, tab_explorer, tab_tools = st.tabs([
+    "💬 Chat", "📝 Editor", "🚀 Generate", "📂 Gezgin", "🔧 Tools"
 ])
 
 
@@ -1172,6 +1172,153 @@ with tab_generate:
             if st.button(f"📦 {title}", key=f"tmpl_{i}", use_container_width=True):
                 st.session_state["gen_desc_value"] = desc
                 st.rerun()
+
+
+# ── EXPLORER TAB ─────────────────────────────────────────────────────────────
+with tab_explorer:
+    st.markdown("## 📂 Dosya Gezgini — Grup Okuma")
+    st.caption("Tüm dosyaları aynı anda görüntüle, seç ve indir.")
+
+    # Dosya listesini çek
+    exp_files_data = api_get("/files/list")
+    exp_file_items = [f for f in (exp_files_data or {}).get("files", []) if f["type"] == "file"]
+
+    if not exp_file_items:
+        st.markdown("""
+        <div style="text-align:center; padding:60px; color:#64748b;">
+            <div style="font-size:40px;">📂</div>
+            <div style="margin-top:12px;">Henüz dosya yok. AI'dan proje üretmesini iste!</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Üst araç çubuğu
+        exp_c1, exp_c2, exp_c3, exp_c4 = st.columns([2, 1, 1, 1])
+        with exp_c1:
+            exp_search = st.text_input("🔍 Dosya ara", placeholder="dosya adı veya içerik...",
+                                       label_visibility="collapsed", key="exp_search")
+        with exp_c2:
+            exp_ext_options = ["Tümü"] + sorted(
+                list({Path(f["name"]).suffix.lower() for f in exp_file_items if Path(f["name"]).suffix})
+            )
+            exp_ext_filter = st.selectbox("Tür", exp_ext_options, key="exp_ext",
+                                          label_visibility="collapsed")
+        with exp_c3:
+            exp_expand_all = st.toggle("Tümünü Aç", value=False, key="exp_expand_all")
+        with exp_c4:
+            # Seçili dosyaları ZIP indir
+            if st.button("📦 Seçilenleri ZIP", key="exp_zip_sel", use_container_width=True):
+                st.session_state["exp_trigger_zip"] = True
+
+        st.divider()
+
+        # Dosyaları filtrele
+        filtered_files = exp_file_items
+        if exp_ext_filter != "Tümü":
+            filtered_files = [f for f in filtered_files
+                              if Path(f["name"]).suffix.lower() == exp_ext_filter]
+        if exp_search:
+            filtered_files = [f for f in filtered_files
+                              if exp_search.lower() in f["name"].lower()]
+
+        st.markdown(f"<div style='font-size:12px; color:#94a3b8; margin-bottom:8px;'>"
+                    f"{len(filtered_files)} dosya gösteriliyor</div>", unsafe_allow_html=True)
+
+        # Dosya içeriklerini gruplu göster
+        selected_for_zip = []
+        for idx, f in enumerate(filtered_files):
+            file_icon = _file_icon(f["name"])
+            ext = Path(f["name"]).suffix.lower().lstrip(".")
+
+            # Syntax highlight dili
+            lang_map = {
+                "py": "python", "js": "javascript", "ts": "typescript",
+                "tsx": "tsx", "jsx": "jsx", "html": "html", "css": "css",
+                "json": "json", "yaml": "yaml", "yml": "yaml", "sh": "bash",
+                "sql": "sql", "md": "markdown", "go": "go", "rs": "rust",
+                "toml": "toml", "env": "bash", "dockerfile": "dockerfile",
+            }
+            highlight_lang = lang_map.get(ext, "text")
+
+            # Dosya içeriğini yükle
+            exp_fd = api_get("/files/read", path=f["path"])
+            content = (exp_fd or {}).get("content", "")
+
+            # Dosya boyutu
+            size_kb = len(content.encode("utf-8")) / 1024
+            size_label = f"{size_kb:.1f} KB" if size_kb >= 0.1 else f"{len(content)} B"
+
+            # İçerik araması eşleşmesi
+            search_match = ""
+            if exp_search and content and exp_search.lower() in content.lower():
+                # İlk eşleşme etrafında snippet göster
+                idx_found = content.lower().find(exp_search.lower())
+                snippet_start = max(0, idx_found - 40)
+                snippet_end = min(len(content), idx_found + len(exp_search) + 40)
+                snippet = content[snippet_start:snippet_end].replace("\n", " ")
+                search_match = f" · 🔍 *...{snippet}...*"
+
+            with st.expander(
+                f"{file_icon} **{f['name']}** &nbsp; "
+                f"<span style='font-size:11px; color:#64748b;'>{size_label}</span>",
+                expanded=exp_expand_all,
+            ):
+                # Mini araç çubuğu
+                mc1, mc2, mc3, mc4 = st.columns([3, 1, 1, 1])
+                with mc1:
+                    st.markdown(
+                        f"<span style='font-size:11px; color:#64748b;'>📄 {f['path']}</span>"
+                        + (f"<br><span style='font-size:11px; color:#f59e0b;'>{search_match}</span>"
+                           if search_match else ""),
+                        unsafe_allow_html=True,
+                    )
+                with mc2:
+                    # Editörde aç
+                    if st.button("✏️ Düzenle", key=f"exp_edit_{idx}", use_container_width=True):
+                        st.session_state.current_file = f["path"]
+                        st.session_state.file_content = content
+                        st.rerun()
+                with mc3:
+                    # Tek dosya indir
+                    if content:
+                        _dl_btn("⬇️ İndir", f["name"], content,
+                                key=f"exp_dl_{idx}", use_container_width=True)
+                with mc4:
+                    # Panoya kopyala (satır sayısı göster)
+                    line_count = content.count("\n") + 1 if content else 0
+                    st.markdown(
+                        f"<div style='font-size:11px; color:#64748b; padding-top:8px; text-align:center;'>"
+                        f"{line_count} satır</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # Kod içeriği
+                if content:
+                    st.code(content, language=highlight_lang, line_numbers=True)
+                else:
+                    st.caption("_(Dosya boş)_")
+
+                selected_for_zip.append((f["name"], f["path"], content))
+
+        # Seçili ZIP işlemi
+        if st.session_state.get("exp_trigger_zip"):
+            st.session_state["exp_trigger_zip"] = False
+            with st.spinner("ZIP hazırlanıyor..."):
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for fname, fpath, fcontent in selected_for_zip:
+                        if fcontent:
+                            zf.writestr(fpath, fcontent)
+                zip_data = buf.getvalue()
+            if zip_data:
+                st.download_button(
+                    "💾 ZIP İndir (Görüntülenen Dosyalar)",
+                    data=zip_data,
+                    file_name="secili_dosyalar.zip",
+                    mime="application/zip",
+                    key="exp_zip_dl",
+                    use_container_width=True,
+                    type="primary",
+                )
 
 
 # ── TOOLS TAB ─────────────────────────────────────────────────────────────────
