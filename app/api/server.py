@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.api.routes import chat, files, github, images
+from app.api.routes import agent as agent_routes
 
 app = FastAPI(
     title="Milli Yapay Zeka",
@@ -27,6 +28,7 @@ app.include_router(chat.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(github.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
+app.include_router(agent_routes.router, prefix="/api")
 
 # Static files
 static_path = Path(__file__).parent.parent.parent / "static"
@@ -41,6 +43,9 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "models": ["claude", "gemini", "glm"],
+        "agent": "/api/agent/run",
+        "agent_stream": "/api/agent/stream",
+        "github_context": "/api/agent/github/context",
     }
 
 
