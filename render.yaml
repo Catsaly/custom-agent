@@ -2,9 +2,10 @@ services:
   # FastAPI Backend — Free tier (sleeps after 15 min inactivity)
   - type: web
     name: milli-yapay-zeka-api
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.api.server:app --host 0.0.0.0 --port $PORT
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: uvicorn app.api.server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -25,9 +26,10 @@ services:
   # Streamlit Frontend — Free tier
   - type: web
     name: milli-yapay-zeka-ui
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: >
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: >-
       streamlit run app/streamlit_app.py
       --server.port $PORT
       --server.address 0.0.0.0
