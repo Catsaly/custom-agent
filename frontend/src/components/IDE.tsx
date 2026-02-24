@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useEffect, useState } from "react";
-import { Settings as SettingsIcon, Github, LayoutPanelLeft, Terminal as TermIcon, Zap } from "lucide-react";
+import { Settings as SettingsIcon, LayoutPanelLeft, Terminal as TermIcon, Zap, MessageSquare, Code2, FolderOpen } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { MODELS } from "@/lib/types";
 import FileTree from "./FileTree";
@@ -49,6 +49,8 @@ function useResize(
   return onMouseDown;
 }
 
+type MobileTab = "chat" | "editor" | "files" | "terminal";
+
 export default function IDE() {
   const {
     sidebarOpen, toggleSidebar,
@@ -61,31 +63,112 @@ export default function IDE() {
   } = useIDEStore();
 
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
 
   useEffect(() => {
-    const check = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (mobile) {
-        if (useIDEStore.getState().sidebarOpen) toggleSidebar();
-        if (useIDEStore.getState().terminalOpen) toggleTerminal();
-      }
-    };
+    const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const effectiveChatWidth = isMobile ? Math.min(chatWidth, window.innerWidth - 8) : chatWidth;
 
   const resizeSidebar = useResize(sidebarWidth, setSidebarWidth, "x", 160, 480);
   const resizeChat = useResize(chatWidth, setChatWidth, "x", 260, 600);
-  // Pass negated value so dragging up (negative delta) increases terminal height
   const resizeTerminal = useResize(-terminalHeight, (v) => setTerminalHeight(-v), "y", -400, -80);
 
   const modelInfo = MODELS[modelId];
 
+  /* ─── MOBILE LAYOUT ────────────────────────────────────────────────── */
+  if (isMobile) {
+    const TAB_H = 56;
+
+    const tabs: { id: MobileTab; icon: React.ReactNode; label: string }[] = [
+      { id: "chat",     icon: <MessageSquare size={20} />, label: "Chat" },
+      { id: "editor",  icon: <Code2 size={20} />,         label: "Kod" },
+      { id: "files",   icon: <FolderOpen size={20} />,    label: "Dosyalar" },
+      { id: "terminal",icon: <TermIcon size={20} />,       label: "Terminal" },
+    ];
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden", background: "#0f172a" }}>
+        {/* Top bar — slim mobile version */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "0 12px",
+          height: 44, borderBottom: "1px solid #2d3748", flexShrink: 0,
+          background: "#0f172a",
+        }}>
+          <Zap size={16} color="#6366f1" />
+          <span style={{ fontWeight: 700, fontSize: 14, color: "#f8fafc", flex: 1 }}>AI IDE</span>
+          {modelInfo && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: "#1e293b", border: "1px solid #334155", borderRadius: 8,
+              padding: "2px 8px", fontSize: 11,
+            }}>
+              <span>{modelInfo.icon}</span>
+              <span style={{ color: "#e2e8f0" }}>{modelInfo.short}</span>
+              {modelInfo.free && <span style={{ color: "#10b981", fontSize: 9, fontWeight: 700 }}>FREE</span>}
+            </div>
+          )}
+          <button
+            onClick={toggleSettings}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}
+          >
+            <SettingsIcon size={16} />
+          </button>
+        </div>
+
+        {/* Content — full height minus top + bottom bar */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <div style={{ display: mobileTab === "chat"     ? "flex" : "none", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+            <AgentChat />
+          </div>
+          <div style={{ display: mobileTab === "editor"   ? "flex" : "none", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+            <CodeEditor />
+          </div>
+          <div style={{ display: mobileTab === "files"    ? "flex" : "none", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+            <FileTree />
+          </div>
+          <div style={{ display: mobileTab === "terminal" ? "flex" : "none", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+            <Terminal />
+          </div>
+        </div>
+
+        {/* Bottom tab bar */}
+        <div style={{
+          display: "flex", height: TAB_H, flexShrink: 0,
+          borderTop: "1px solid #2d3748", background: "#0f172a",
+        }}>
+          {tabs.map((tab) => {
+            const active = mobileTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setMobileTab(tab.id)}
+                style={{
+                  flex: 1, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 3,
+                  background: active ? "rgba(99,102,241,0.12)" : "none",
+                  border: "none", cursor: "pointer",
+                  color: active ? "#a5b4fc" : "#4b5563",
+                  borderTop: active ? "2px solid #6366f1" : "2px solid transparent",
+                  fontSize: 10, fontWeight: active ? 700 : 400,
+                  transition: "color 0.15s",
+                }}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {showSettings && <Settings />}
+      </div>
+    );
+  }
+
+  /* ─── DESKTOP LAYOUT ───────────────────────────────────────────────── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "#0f172a" }}>
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
@@ -101,7 +184,6 @@ export default function IDE() {
 
         <div style={{ height: 20, width: 1, background: "#2d3748" }} />
 
-        {/* Active model pill */}
         {modelInfo && (
           <div style={{
             display: "flex", alignItems: "center", gap: 5,
@@ -116,7 +198,6 @@ export default function IDE() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Right buttons */}
         <button
           onClick={toggleSidebar}
           title="Dosya Gezgini"
@@ -159,38 +240,24 @@ export default function IDE() {
       {/* ── Main Layout ──────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* Sidebar: File Tree */}
         {sidebarOpen && (
           <>
             <div style={{ width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
               <FileTree />
             </div>
-
-            {/* Resize handle: sidebar */}
-            {!isMobile && (
-              <div
-                className="resize-handle resize-handle-x"
-                onMouseDown={resizeSidebar}
-              />
-            )}
+            <div className="resize-handle resize-handle-x" onMouseDown={resizeSidebar} />
           </>
         )}
 
         {/* Center: Editor + Terminal */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-          {/* Editor */}
           <div style={{ flex: 1, overflow: "hidden" }}>
             <CodeEditor />
           </div>
 
-          {/* Terminal */}
           {terminalOpen && (
             <>
-              {/* Resize handle: terminal */}
-              <div
-                className="resize-handle resize-handle-y"
-                onMouseDown={resizeTerminal}
-              />
+              <div className="resize-handle resize-handle-y" onMouseDown={resizeTerminal} />
               <div style={{ height: terminalHeight, flexShrink: 0, overflow: "hidden", borderTop: "1px solid #2d3748" }}>
                 <Terminal />
               </div>
@@ -198,21 +265,13 @@ export default function IDE() {
           )}
         </div>
 
-        {/* Resize handle: chat */}
-        {!isMobile && (
-          <div
-            className="resize-handle resize-handle-x"
-            onMouseDown={resizeChat}
-          />
-        )}
+        <div className="resize-handle resize-handle-x" onMouseDown={resizeChat} />
 
-        {/* Right: AI Agent Chat */}
-        <div style={{ width: effectiveChatWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
+        <div style={{ width: chatWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
           <AgentChat />
         </div>
       </div>
 
-      {/* Settings Modal */}
       {showSettings && <Settings />}
     </div>
   );
