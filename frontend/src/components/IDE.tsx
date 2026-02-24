@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { Settings as SettingsIcon, Github, LayoutPanelLeft, Terminal as TermIcon, Zap } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { MODELS } from "@/lib/types";
@@ -59,6 +59,25 @@ export default function IDE() {
     showSettings, toggleSettings,
     modelId,
   } = useIDEStore();
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        if (useIDEStore.getState().sidebarOpen) toggleSidebar();
+        if (useIDEStore.getState().terminalOpen) toggleTerminal();
+      }
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const effectiveChatWidth = isMobile ? Math.min(chatWidth, window.innerWidth - 8) : chatWidth;
 
   const resizeSidebar = useResize(sidebarWidth, setSidebarWidth, "x", 160, 480);
   const resizeChat = useResize(chatWidth, setChatWidth, "x", 260, 600);
@@ -148,10 +167,12 @@ export default function IDE() {
             </div>
 
             {/* Resize handle: sidebar */}
-            <div
-              className="resize-handle resize-handle-x"
-              onMouseDown={resizeSidebar}
-            />
+            {!isMobile && (
+              <div
+                className="resize-handle resize-handle-x"
+                onMouseDown={resizeSidebar}
+              />
+            )}
           </>
         )}
 
@@ -178,13 +199,15 @@ export default function IDE() {
         </div>
 
         {/* Resize handle: chat */}
-        <div
-          className="resize-handle resize-handle-x"
-          onMouseDown={resizeChat}
-        />
+        {!isMobile && (
+          <div
+            className="resize-handle resize-handle-x"
+            onMouseDown={resizeChat}
+          />
+        )}
 
         {/* Right: AI Agent Chat */}
-        <div style={{ width: chatWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
+        <div style={{ width: effectiveChatWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
           <AgentChat />
         </div>
       </div>
