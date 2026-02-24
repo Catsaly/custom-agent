@@ -14,7 +14,7 @@ const TOOL_META: Record<string, { icon: React.ReactNode; label: string; color: s
 };
 
 export function ToolCallCard({ call }: { call: ToolCall }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const meta = TOOL_META[call.tool] ?? { icon: <Terminal size={13} />, label: call.tool, color: "#94a3b8" };
 
   const StatusIcon = call.status === "running"

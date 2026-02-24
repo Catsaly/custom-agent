@@ -241,27 +241,6 @@ export default function AgentChat() {
 
       {/* Input */}
       <div style={{ padding: "8px 10px", borderTop: "1px solid #2d3748", flexShrink: 0 }}>
-        {/* Quick prompts */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap" }}>
-          {[
-            "Dosyaları listele",
-            "Hataları düzelt",
-            "Testleri çalıştır",
-            "Bağımlılıkları yükle",
-          ].map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => setInput(prompt)}
-              style={{
-                background: "#1e293b", border: "1px solid #334155", borderRadius: 9999,
-                padding: "2px 8px", color: "#94a3b8", cursor: "pointer", fontSize: 10,
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-
         <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
           <textarea
             ref={inputRef}
