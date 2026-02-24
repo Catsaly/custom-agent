@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useRef } from "react";
 import Editor, { type Monaco } from "@monaco-editor/react";
-import { X, Save, Circle } from "lucide-react";
+import { X, Save, Circle, Download } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { writeFile } from "@/lib/api";
+import { writeLocalFile, downloadFile } from "@/lib/local-fs";
 
 const LANG_MAP: Record<string, string> = {
   py: "python", js: "javascript", ts: "typescript", tsx: "typescript",
@@ -26,6 +27,7 @@ export default function CodeEditor() {
   const {
     openFiles, activeFile, fileContents, closeFile, setActiveFile,
     setFileContent, markUnsaved, markSaved, unsavedFiles, workspace,
+    localMode, localDirHandle,
   } = useIDEStore();
 
   const monacoRef = useRef<Monaco | null>(null);
@@ -61,12 +63,19 @@ export default function CodeEditor() {
   const handleSave = useCallback(async (path: string) => {
     const content = fileContents[path] ?? "";
     try {
-      await writeFile(path, content, workspace);
+      if (localMode && localDirHandle) {
+        await writeLocalFile(localDirHandle, path, content);
+      } else if (localMode && !localDirHandle) {
+        // webkitdirectory / read-only mode: download instead
+        downloadFile(path, content);
+      } else {
+        await writeFile(path, content, workspace);
+      }
       markSaved(path);
     } catch (e) {
       console.error("Save error:", e);
     }
-  }, [fileContents, workspace, markSaved]);
+  }, [fileContents, workspace, markSaved, localMode, localDirHandle]);
 
   if (!activeFile) {
     return (
@@ -135,7 +144,10 @@ export default function CodeEditor() {
             onClick={() => handleSave(activeFile)}
             style={{ display: "flex", alignItems: "center", gap: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 6, padding: "2px 8px", color: "#94a3b8", cursor: "pointer", fontSize: 11 }}
           >
-            <Save size={11} /> Kaydet
+            {localMode && !localDirHandle
+              ? <><Download size={11} /> İndir</>
+              : <><Save size={11} /> Kaydet</>
+            }
           </button>
         )}
         <span style={{ color: "#374151" }}>{getLang(activeFile)}</span>

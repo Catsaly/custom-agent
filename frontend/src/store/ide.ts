@@ -3,6 +3,13 @@ import { persist } from "zustand/middleware";
 import type { FileNode, ChatMessage, ApiKeys } from "@/lib/types";
 
 interface IDEState {
+  // Local filesystem mode (File System Access API or webkitdirectory upload)
+  localMode: boolean;
+  setLocalMode: (v: boolean) => void;
+  // Non-persisted: holds the FileSystemDirectoryHandle when localMode = true
+  localDirHandle: FileSystemDirectoryHandle | null;
+  setLocalDirHandle: (h: FileSystemDirectoryHandle | null) => void;
+
   // Workspace
   workspace: string;
   setWorkspace: (w: string) => void;
@@ -53,6 +60,11 @@ interface IDEState {
 export const useIDEStore = create<IDEState>()(
   persist(
     (set, get) => ({
+      localMode: false,
+      setLocalMode: (localMode) => set({ localMode }),
+      localDirHandle: null,
+      setLocalDirHandle: (localDirHandle) => set({ localDirHandle }),
+
       workspace: "default",
       setWorkspace: (workspace) => set({ workspace }),
 
