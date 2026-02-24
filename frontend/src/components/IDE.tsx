@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useRef } from "react";
-import type { Dispatch, SetStateAction } from "react";
 import { Settings as SettingsIcon, Github, LayoutPanelLeft, Terminal as TermIcon, Zap } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { MODELS } from "@/lib/types";
@@ -10,22 +9,30 @@ import AgentChat from "./AgentChat";
 import Terminal from "./Terminal";
 import Settings from "./Settings";
 
-function useResize(setter: Dispatch<SetStateAction<number>>, direction: "x" | "y", min: number, max: number) {
+function useResize(
+  currentValue: number,
+  setter: (v: number) => void,
+  direction: "x" | "y",
+  min: number,
+  max: number
+) {
   const dragging = useRef(false);
-  const startVal = useRef(0);
   const startPos = useRef(0);
+  const valRef = useRef(currentValue);
+  valRef.current = currentValue;
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
     startPos.current = direction === "x" ? e.clientX : e.clientY;
-    startVal.current = 0; // will be updated externally
     document.body.style.cursor = direction === "x" ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!dragging.current) return;
       const delta = (direction === "x" ? ev.clientX : ev.clientY) - startPos.current;
-      setter((prev) => Math.max(min, Math.min(max, prev + delta)));
+      const next = Math.max(min, Math.min(max, valRef.current + delta));
+      valRef.current = next;
+      setter(next);
       startPos.current = direction === "x" ? ev.clientX : ev.clientY;
     };
     const onMouseUp = () => {
@@ -52,9 +59,10 @@ export default function IDE() {
     modelId,
   } = useIDEStore();
 
-  const resizeSidebar = useResize(setSidebarWidth, "x", 160, 480);
-  const resizeChat = useResize(setChatWidth, "x", 260, 600);
-  const resizeTerminal = useResize((v) => setTerminalHeight(-v), "y", 80, 400);
+  const resizeSidebar = useResize(sidebarWidth, setSidebarWidth, "x", 160, 480);
+  const resizeChat = useResize(chatWidth, setChatWidth, "x", 260, 600);
+  // Pass negated value so dragging up (negative delta) increases terminal height
+  const resizeTerminal = useResize(-terminalHeight, (v) => setTerminalHeight(-v), "y", -400, -80);
 
   const modelInfo = MODELS[modelId];
 
