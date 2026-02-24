@@ -45,3 +45,8 @@ uploads/
 *.pem
 secrets.json
 .streamlit/secrets.toml
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
