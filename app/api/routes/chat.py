@@ -1,20 +1,23 @@
-"""Chat API routes with streaming support."""
+"""Chat API routes — model_id + api_key destekli."""
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional
 import json
-import uuid
 
+from app.ai.client_factory import get_client_for_model
+from app.ai.model_registry import resolve_model_id
 from app.ai.agent import CodingAgent
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-agent = CodingAgent()
+_agent = CodingAgent()
 
 
 class ChatRequest(BaseModel):
     prompt: str
-    model: Literal["claude", "gemini", "glm"] = "claude"
+    model: str = "claude"          # kısa isim veya tam model_id
+    model_id: Optional[str] = None  # tam model_id (öncelikli)
+    api_key: Optional[str] = None  # kullanıcının API anahtarı
     session_id: Optional[str] = None
     messages: list[dict] = []
     workspace_path: Optional[str] = None
@@ -22,20 +25,27 @@ class ChatRequest(BaseModel):
 
 class GenerateProjectRequest(BaseModel):
     description: str
-    model: Literal["claude", "gemini", "glm"] = "claude"
+    model: str = "claude"
+    model_id: Optional[str] = None
+    api_key: Optional[str] = None
     workspace_path: str = "workspace/default"
+
+
+def _resolve(req) -> tuple[str, Optional[str]]:
+    """(model_id, api_key) döner."""
+    mid = req.model_id or req.model
+    return resolve_model_id(mid), req.api_key
 
 
 @router.post("/stream")
 async def stream_chat(req: ChatRequest):
+    model_id, api_key = _resolve(req)
+    client = get_client_for_model(model_id, api_key=api_key)
+
     async def generate():
         try:
-            async for chunk in agent.stream_response(
-                prompt=req.prompt,
-                model=req.model,
-                conversation_history=req.messages,
-                workspace_path=req.workspace_path,
-            ):
+            messages = req.messages + [{"role": "user", "content": req.prompt}]
+            async for chunk in client.stream_chat(messages):
                 data = json.dumps({"type": "text", "content": chunk})
                 yield f"data: {data}\n\n"
             yield "data: [DONE]\n\n"
@@ -46,35 +56,33 @@ async def stream_chat(req: ChatRequest):
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 @router.post("/message")
 async def chat_message(req: ChatRequest):
+    model_id, api_key = _resolve(req)
+    client = get_client_for_model(model_id, api_key=api_key)
     try:
-        response = await agent.chat(
-            prompt=req.prompt,
-            model=req.model,
-            conversation_history=req.messages,
-            workspace_path=req.workspace_path,
-        )
-        return {"response": response, "model": req.model}
+        messages = req.messages + [{"role": "user", "content": req.prompt}]
+        response = await client.chat(messages)
+        return {"response": response, "model": model_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/generate-project")
 async def generate_project(req: GenerateProjectRequest):
+    model_id, api_key = _resolve(req)
+
     async def generate():
         try:
-            async for chunk in agent.generate_project(
+            async for chunk in _agent.generate_project(
                 description=req.description,
-                model=req.model,
+                model=model_id,
                 workspace_path=req.workspace_path,
+                api_key=api_key,
             ):
                 data = json.dumps({"type": "text", "content": chunk})
                 yield f"data: {data}\n\n"
@@ -93,10 +101,13 @@ async def generate_project(req: GenerateProjectRequest):
 @router.post("/explain")
 async def explain_code(payload: dict):
     code = payload.get("code", "")
-    model = payload.get("model", "claude")
+    model_id = resolve_model_id(payload.get("model_id") or payload.get("model", "claude"))
+    api_key = payload.get("api_key")
     if not code:
         raise HTTPException(status_code=400, detail="code is required")
-    result = await agent.explain_code(code, model=model)
+    client = get_client_for_model(model_id, api_key=api_key)
+    messages = [{"role": "user", "content": f"Explain this code:\n\n```\n{code}\n```"}]
+    result = await client.chat(messages)
     return {"explanation": result}
 
 
@@ -104,8 +115,11 @@ async def explain_code(payload: dict):
 async def fix_code(payload: dict):
     code = payload.get("code", "")
     error = payload.get("error", "")
-    model = payload.get("model", "claude")
+    model_id = resolve_model_id(payload.get("model_id") or payload.get("model", "claude"))
+    api_key = payload.get("api_key")
     if not code:
         raise HTTPException(status_code=400, detail="code is required")
-    result = await agent.analyze_and_fix(code, error, model=model)
+    client = get_client_for_model(model_id, api_key=api_key)
+    messages = [{"role": "user", "content": f"Fix this code:\n\n```\n{code}\n```\n\nError: {error}"}]
+    result = await client.chat(messages)
     return {"fixed_code": result}

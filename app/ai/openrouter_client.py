@@ -1,19 +1,29 @@
-"""ZhipuAI GLM client with streaming support."""
+"""
+OpenRouter Client — Ücretsiz ve ücretli modellere tek API
+=========================================================
+OpenRouter, OpenAI-uyumlu API ile çok sayıda modele erişim sağlar.
+Ücretsiz modeller ':free' suffix'i ile kullanılabilir.
+Kayıt: https://openrouter.ai
+"""
 from typing import AsyncIterator, Optional
 import asyncio
 from app.config import settings
 
-_DEFAULT_MODEL = "glm-4-plus"
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+_DEFAULT_MODEL = "meta-llama/llama-3.2-11b-vision-instruct:free"
 
 
-class GLMClient:
+class OpenRouterClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or settings.zhipuai_api_key
+        self.api_key = api_key or settings.openrouter_api_key
         self.model = model or _DEFAULT_MODEL
 
     def _get_client(self):
-        from zhipuai import ZhipuAI
-        return ZhipuAI(api_key=self.api_key)
+        from openai import OpenAI
+        return OpenAI(
+            api_key=self.api_key,
+            base_url=_OPENROUTER_BASE_URL,
+        )
 
     def _build_messages(
         self, messages: list[dict], system: Optional[str] = None
@@ -22,7 +32,10 @@ class GLMClient:
         if system:
             result.append({"role": "system", "content": system})
         for msg in messages:
-            result.append({"role": msg["role"], "content": msg["content"]})
+            role = msg.get("role", "user")
+            if role not in ("user", "assistant", "system"):
+                role = "user"
+            result.append({"role": role, "content": msg.get("content", "")})
         return result
 
     async def stream_chat(
@@ -40,6 +53,10 @@ class GLMClient:
                 messages=built,
                 stream=True,
                 max_tokens=max_tokens,
+                extra_headers={
+                    "HTTP-Referer": "https://nightowl-charm.lovable.app",
+                    "X-Title": "Milli Yapay Zeka IDE",
+                },
             )
 
         response = await asyncio.to_thread(_stream)
@@ -61,24 +78,10 @@ class GLMClient:
                 model=self.model,
                 messages=built,
                 max_tokens=max_tokens,
-            )
-
-        response = await asyncio.to_thread(_call)
-        return response.choices[0].message.content or ""
-
-    async def analyze_image(self, image_base64: str, prompt: str) -> str:
-        client = self._get_client()
-
-        def _call():
-            return client.chat.completions.create(
-                model="glm-4v-plus",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }],
+                extra_headers={
+                    "HTTP-Referer": "https://nightowl-charm.lovable.app",
+                    "X-Title": "Milli Yapay Zeka IDE",
+                },
             )
 
         response = await asyncio.to_thread(_call)

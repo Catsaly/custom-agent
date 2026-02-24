@@ -6,17 +6,13 @@ Tool calling döngüsü ile web araması ve dosya okuma yapabilir.
 """
 import json
 import re
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 from app.ai.langgraph.state import AgentState
-from app.ai.claude_client import ClaudeClient
-from app.ai.gemini_client import GeminiClient
-from app.ai.glm_client import GLMClient
+from app.ai.client_factory import get_client_for_model
+from app.ai.model_registry import resolve_model_id
 from app.ai.langgraph.tools import run_tool, get_tool_schemas
 from app.tools.file_tools import FileTools
 
-_claude = ClaudeClient()
-_gemini = GeminiClient()
-_glm = GLMClient()
 _file_tools = FileTools()
 
 MAX_TOOL_CALLS = 4  # Tek turda maksimum tool çağrısı
@@ -39,7 +35,7 @@ Görevin: Verilen plan ve GitHub bağlamını kullanarak eksiksiz, production-re
 ## Tool Kullanımı
 Eğer bilgi gerekiyorsa şu formatla tool çağır:
 <TOOL_CALL>
-{"tool": "tool_adı", "args": {"parametre": "değer"}}
+{{"tool": "tool_adı", "args": {{"parametre": "değer"}}}}
 </TOOL_CALL>
 
 Mevcut tool'lar:
@@ -52,10 +48,6 @@ GitHub bağlamı varsa:
 - Var olan pattern ve stil kurallarını takip et
 - Açık issues/PR'ları göz önünde bulundur
 """
-
-
-def _get_client(model: str):
-    return {"claude": _claude, "gemini": _gemini, "glm": _glm}.get(model, _claude)
 
 
 def _build_system_prompt() -> str:
@@ -119,8 +111,9 @@ async def _extract_and_write_files(response: str, workspace_path: str) -> dict[s
 
 async def code_gen_node(state: AgentState) -> dict:
     """Kod üretir, tool çağrıları yapar ve dosyaları yazar."""
-    model = state.get("model", "claude")
-    client = _get_client(model)
+    model_id = resolve_model_id(state.get("model", "claude"))
+    api_key = state.get("api_key")
+    client = get_client_for_model(model_id, api_key=api_key)
     workspace = state.get("workspace_path", "workspace/default")
     iteration = state.get("iteration", 0)
 
@@ -176,8 +169,9 @@ async def code_gen_node(state: AgentState) -> dict:
 
 async def code_gen_stream(state: AgentState) -> AsyncIterator[str]:
     """Kod üretimini stream olarak döner (UI için)."""
-    model = state.get("model", "claude")
-    client = _get_client(model)
+    model_id = resolve_model_id(state.get("model", "claude"))
+    api_key = state.get("api_key")
+    client = get_client_for_model(model_id, api_key=api_key)
     system = _build_system_prompt()
     user_msg = _build_user_message(state)
 

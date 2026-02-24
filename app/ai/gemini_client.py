@@ -4,13 +4,16 @@ from typing import AsyncIterator, Optional
 import asyncio
 from app.config import settings
 
+_DEFAULT_MODEL = "gemini-2.0-flash-exp"
+
 
 class GeminiClient:
-    def __init__(self):
-        if settings.google_api_key:
-            genai.configure(api_key=settings.google_api_key)
-        self.model_name = "gemini-2.0-flash-exp"
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or settings.google_api_key
+        self.model_name = model or _DEFAULT_MODEL
         self.vision_model_name = "gemini-1.5-pro"
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
 
     def _get_model(self, system: Optional[str] = None):
         config = {
@@ -22,6 +25,8 @@ class GeminiClient:
         kwargs = {"generation_config": config}
         if system:
             kwargs["system_instruction"] = system
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
         return genai.GenerativeModel(self.model_name, **kwargs)
 
     async def stream_chat(
@@ -67,6 +72,8 @@ class GeminiClient:
     async def analyze_image(self, image_data: bytes, prompt: str) -> str:
         import PIL.Image
         import io
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
         model = genai.GenerativeModel(self.vision_model_name)
         image = PIL.Image.open(io.BytesIO(image_data))
         response = await asyncio.to_thread(

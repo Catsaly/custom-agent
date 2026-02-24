@@ -47,3 +47,6 @@ class AgentState(TypedDict):
     session_id: str
     project_id: Optional[str]
     workspace_path: str
+
+    # ── Dynamic API Key (kullanıcıdan alınan) ────────────────────────────────
+    api_key: Optional[str]

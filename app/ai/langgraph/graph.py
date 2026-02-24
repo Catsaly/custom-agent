@@ -122,6 +122,7 @@ class GraphAgent:
         workspace_path: str = "workspace/default",
         github_repo: Optional[str] = None,
         max_iter: int = 2,
+        api_key: Optional[str] = None,
     ) -> AgentState:
         return {
             "messages": [],
@@ -144,6 +145,7 @@ class GraphAgent:
             "session_id": session_id or str(uuid.uuid4()),
             "project_id": project_id,
             "workspace_path": workspace_path,
+            "api_key": api_key,
         }
 
     async def run(
@@ -155,6 +157,7 @@ class GraphAgent:
         workspace_path: str = "workspace/default",
         github_repo: Optional[str] = None,
         max_iter: int = 2,
+        api_key: Optional[str] = None,
     ) -> AgentState:
         """Ajanı çalıştırır ve final state'i döner."""
         initial = self._make_initial_state(
@@ -165,6 +168,7 @@ class GraphAgent:
             workspace_path=workspace_path,
             github_repo=github_repo,
             max_iter=max_iter,
+            api_key=api_key,
         )
         config = {"recursion_limit": 20}
         final_state = await self._app.ainvoke(initial, config=config)
@@ -179,6 +183,7 @@ class GraphAgent:
         workspace_path: str = "workspace/default",
         github_repo: Optional[str] = None,
         max_iter: int = 2,
+        api_key: Optional[str] = None,
     ) -> AsyncIterator[dict]:
         """
         Graf olaylarını stream olarak döner.
@@ -192,6 +197,7 @@ class GraphAgent:
             workspace_path=workspace_path,
             github_repo=github_repo,
             max_iter=max_iter,
+            api_key=api_key,
         )
         config = {"recursion_limit": 20}
 

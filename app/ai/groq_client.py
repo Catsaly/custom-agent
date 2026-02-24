@@ -1,19 +1,25 @@
-"""ZhipuAI GLM client with streaming support."""
+"""
+Groq AI Client — Hızlı ücretsiz LLM inference
+=============================================
+Groq API OpenAI-uyumlu arayüz sunar.
+Desteklenen ücretsiz modeller: llama-3.3-70b-versatile, llama-3.1-8b-instant,
+mixtral-8x7b-32768, gemma2-9b-it, deepseek-r1-distill-llama-70b
+"""
 from typing import AsyncIterator, Optional
 import asyncio
 from app.config import settings
 
-_DEFAULT_MODEL = "glm-4-plus"
+_GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 
-class GLMClient:
+class GroqClient:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or settings.zhipuai_api_key
-        self.model = model or _DEFAULT_MODEL
+        self.api_key = api_key or settings.groq_api_key
+        self.model = model or _GROQ_DEFAULT_MODEL
 
     def _get_client(self):
-        from zhipuai import ZhipuAI
-        return ZhipuAI(api_key=self.api_key)
+        from groq import Groq
+        return Groq(api_key=self.api_key)
 
     def _build_messages(
         self, messages: list[dict], system: Optional[str] = None
@@ -22,7 +28,10 @@ class GLMClient:
         if system:
             result.append({"role": "system", "content": system})
         for msg in messages:
-            result.append({"role": msg["role"], "content": msg["content"]})
+            role = msg.get("role", "user")
+            if role not in ("user", "assistant", "system"):
+                role = "user"
+            result.append({"role": role, "content": msg.get("content", "")})
         return result
 
     async def stream_chat(
@@ -39,7 +48,7 @@ class GLMClient:
                 model=self.model,
                 messages=built,
                 stream=True,
-                max_tokens=max_tokens,
+                max_tokens=min(max_tokens, 32768),
             )
 
         response = await asyncio.to_thread(_stream)
@@ -60,25 +69,7 @@ class GLMClient:
             return client.chat.completions.create(
                 model=self.model,
                 messages=built,
-                max_tokens=max_tokens,
-            )
-
-        response = await asyncio.to_thread(_call)
-        return response.choices[0].message.content or ""
-
-    async def analyze_image(self, image_base64: str, prompt: str) -> str:
-        client = self._get_client()
-
-        def _call():
-            return client.chat.completions.create(
-                model="glm-4v-plus",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }],
+                max_tokens=min(max_tokens, 32768),
             )
 
         response = await asyncio.to_thread(_call)

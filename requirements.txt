@@ -7,10 +7,14 @@ streamlit==1.41.1
 langgraph>=1.0.0
 langchain-core>=1.0.0
 
-# AI Models
+# AI Models — Ücretli
 anthropic==0.42.0
 google-generativeai==0.8.3
 zhipuai==2.1.5.20230904
+
+# AI Models — Ücretsiz / Ek Sağlayıcılar
+groq>=0.11.0
+openai>=1.40.0
 
 # GitHub Integration
 PyGithub==2.5.0
@@ -41,4 +45,3 @@ black==24.10.0
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.2
-httpx==0.28.1

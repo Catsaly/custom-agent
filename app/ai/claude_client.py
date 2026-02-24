@@ -3,13 +3,14 @@ import anthropic
 from typing import AsyncIterator, Optional
 from app.config import settings
 
+_DEFAULT_MODEL = "claude-opus-4-6"
+
 
 class ClaudeClient:
-    def __init__(self):
-        self.client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key
-        )
-        self.model = "claude-opus-4-6"
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or settings.anthropic_api_key
+        self.model = model or _DEFAULT_MODEL
+        self.client = anthropic.AsyncAnthropic(api_key=self.api_key)
 
     async def stream_chat(
         self,
@@ -20,7 +21,6 @@ class ClaudeClient:
         kwargs = {
             "model": self.model,
             "max_tokens": max_tokens,
-            "thinking": {"type": "adaptive"},
             "messages": messages,
         }
         if system:
@@ -39,7 +39,6 @@ class ClaudeClient:
         kwargs = {
             "model": self.model,
             "max_tokens": max_tokens,
-            "thinking": {"type": "adaptive"},
             "messages": messages,
         }
         if system:

@@ -185,6 +185,8 @@ def init_state():
         "session_id": str(uuid.uuid4()),
         "messages": [],
         "model": "claude",
+        "model_id": "claude-opus-4-6",   # tam model ID
+        "api_keys": {},                   # {provider: api_key}
         "current_file": None,
         "file_content": "",
         "workspace_path": "workspace/default",
@@ -196,6 +198,7 @@ def init_state():
         "session_start": datetime.now().isoformat(),
         "files_created": 0,
         "msgs_sent": 0,
+        "model_filter": "Tümü",   # "Tümü" | "Ücretsiz" | "Ücretli"
         # Auth state
         "auth_user": None,         # {"id", "email", "email_confirmed"}
         "auth_token": None,        # Supabase access_token
@@ -209,6 +212,31 @@ def init_state():
 init_state()
 
 API_URL = "http://localhost:8000/api"
+
+# Model registry import (lazy, sadece sidebar için)
+try:
+    from app.ai.model_registry import (
+        MODELS, list_by_group, get_display_name, resolve_model_id
+    )
+    _REGISTRY_OK = True
+except ImportError:
+    _REGISTRY_OK = False
+    MODELS = {}
+
+
+def _active_model_id() -> str:
+    """Kullanıcının seçtiği tam model ID'yi döner."""
+    return st.session_state.get("model_id", "claude-opus-4-6")
+
+
+def _active_api_key() -> Optional[str]:
+    """Seçili model için aktif API anahtarını döner (session'dan)."""
+    if not _REGISTRY_OK:
+        return None
+    mid = _active_model_id()
+    info = MODELS.get(mid, {})
+    provider = info.get("key_field", "anthropic")
+    return st.session_state.get("api_keys", {}).get(provider)
 
 
 # ── Auth Helpers ──────────────────────────────────────────────────────────────
@@ -439,10 +467,28 @@ def api_post(path: str, data: dict) -> Optional[dict]:
 
 
 def model_icon(model: str) -> str:
-    return {"claude": "🔶", "gemini": "💎", "glm": "🌊"}.get(model, "🤖")
+    icons = {
+        "claude": "🔶", "anthropic": "🔶",
+        "gemini": "💎", "google": "💎",
+        "glm": "🌊", "zhipuai": "🌊",
+        "groq": "🦙",
+        "openrouter": "🌐",
+    }
+    if _REGISTRY_OK and model in MODELS:
+        return MODELS[model].get("icon", "🤖")
+    return icons.get(model, "🤖")
 
 def model_color(model: str) -> str:
-    return {"claude": "#ff6b35", "gemini": "#4285f4", "glm": "#00c4cc"}.get(model, "#6366f1")
+    colors = {
+        "claude": "#ff6b35", "anthropic": "#ff6b35",
+        "gemini": "#4285f4", "google": "#4285f4",
+        "glm": "#00c4cc", "zhipuai": "#00c4cc",
+        "groq": "#7c3aed",
+        "openrouter": "#059669",
+    }
+    if _REGISTRY_OK and model in MODELS:
+        return MODELS[model].get("color", "#6366f1")
+    return colors.get(model, "#6366f1")
 
 
 # ── Download Helpers ──────────────────────────────────────────────────────────
@@ -562,20 +608,100 @@ with st.sidebar:
             st.rerun()
         st.divider()
 
-    # Model Selector
-    st.markdown("<div style='font-size:12px; color:#94a3b8; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;'>AI Model</div>", unsafe_allow_html=True)
-    model_cols = st.columns(3)
-    for i, (m, label, icon) in enumerate([
-        ("claude", "Claude", "🔶"),
-        ("gemini", "Gemini", "💎"),
-        ("glm", "GLM", "🌊"),
-    ]):
-        with model_cols[i]:
-            if st.button(f"{icon}\n{label}", key=f"model_{m}",
-                         use_container_width=True,
-                         type="primary" if st.session_state.model == m else "secondary"):
-                st.session_state.model = m
+    # ── Model Selector (Gelişmiş) ─────────────────────────────────────────────
+    st.markdown("""
+    <div style='font-size:12px; color:#94a3b8; margin-bottom:6px; font-weight:600;
+                text-transform:uppercase; letter-spacing:0.5px;'>AI Model Seç</div>
+    """, unsafe_allow_html=True)
+
+    # Filtre
+    mf_cols = st.columns(3)
+    for i, lbl in enumerate(["Tümü", "Ücretsiz", "Ücretli"]):
+        with mf_cols[i]:
+            is_active = st.session_state.get("model_filter", "Tümü") == lbl
+            if st.button(lbl, key=f"mf_{lbl}", use_container_width=True,
+                         type="primary" if is_active else "secondary"):
+                st.session_state.model_filter = lbl
                 st.rerun()
+
+    # Model listesi filtrele
+    if _REGISTRY_OK:
+        flt = st.session_state.get("model_filter", "Tümü")
+        if flt == "Ücretsiz":
+            all_mids = [mid for mid, info in MODELS.items() if info["free"]]
+        elif flt == "Ücretli":
+            all_mids = [mid for mid, info in MODELS.items() if not info["free"]]
+        else:
+            all_mids = list(MODELS.keys())
+
+        # Grup başlıkları ile model seçimi
+        groups = {}
+        for mid in all_mids:
+            g = MODELS[mid]["group"]
+            groups.setdefault(g, []).append(mid)
+
+        # Selectbox seçenekleri
+        options_display = []
+        options_ids = []
+        for grp, mids in groups.items():
+            for mid in mids:
+                info = MODELS[mid]
+                free_badge = " ✓" if info["free"] else ""
+                options_display.append(f"{info['icon']} {info['short']}{free_badge}  [{grp}]")
+                options_ids.append(mid)
+
+        current_mid = st.session_state.get("model_id", "claude-opus-4-6")
+        try:
+            current_idx = options_ids.index(current_mid)
+        except ValueError:
+            current_idx = 0
+
+        sel_idx = st.selectbox(
+            "Model",
+            range(len(options_display)),
+            index=current_idx,
+            format_func=lambda i: options_display[i],
+            label_visibility="collapsed",
+            key="model_selectbox",
+        )
+        selected_mid = options_ids[sel_idx]
+        if selected_mid != st.session_state.get("model_id"):
+            st.session_state.model_id = selected_mid
+            # Legacy model alanını da güncelle
+            info = MODELS[selected_mid]
+            st.session_state.model = info["provider"] if info["provider"] in ("anthropic", "gemini", "glm") else info["provider"]
+
+        # Seçili model bilgisi
+        sel_info = MODELS.get(selected_mid, {})
+        free_color = "#10b981" if sel_info.get("free") else "#f59e0b"
+        free_text = "Ücretsiz" if sel_info.get("free") else "Ücretli"
+        provider_key = sel_info.get("key_field", "")
+        user_key = st.session_state.get("api_keys", {}).get(provider_key, "")
+        key_status = "API Anahtarı Girildi" if user_key else "API Anahtarı Gerekli"
+        key_color = "#10b981" if user_key else "#ef4444"
+
+        st.markdown(f"""
+        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px;
+                    padding:8px 12px; margin-top:6px; font-size:11px;">
+            <div style="color:{free_color}; font-weight:600;">{free_text}
+                &nbsp;·&nbsp; <span style="color:{key_color};">{key_status}</span>
+            </div>
+            <div style="color:#64748b; margin-top:2px;">{selected_mid}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Fallback: eski 3-buton
+        model_cols = st.columns(3)
+        for i, (m, label, icon) in enumerate([
+            ("claude", "Claude", "🔶"),
+            ("gemini", "Gemini", "💎"),
+            ("glm", "GLM", "🌊"),
+        ]):
+            with model_cols[i]:
+                if st.button(f"{icon}\n{label}", key=f"model_{m}", use_container_width=True,
+                             type="primary" if st.session_state.model == m else "secondary"):
+                    st.session_state.model = m
+                    st.rerun()
 
     st.divider()
 
@@ -690,6 +816,63 @@ with st.sidebar:
 
         st.divider()
 
+        # ── API Key Yönetimi ─────────────────────────────────────────────────
+        st.markdown("**🔑 API Anahtarları**")
+        st.caption("Anahtarlar yalnızca oturum süresince saklanır, sunucuya kaydedilmez.")
+
+        api_keys = st.session_state.get("api_keys", {})
+        _KEY_PROVIDERS = [
+            ("anthropic", "Anthropic (Claude)", "sk-ant-...", "🔶"),
+            ("google", "Google (Gemini)", "AIza...", "💎"),
+            ("zhipuai", "ZhipuAI (GLM)", "zhipuai_...", "🌊"),
+            ("groq", "Groq (Llama/Mixtral — Ücretsiz)", "gsk_...", "🦙"),
+            ("openrouter", "OpenRouter (Çoklu Model)", "sk-or-...", "🌐"),
+            ("github", "GitHub Token", "ghp_...", "🐙"),
+        ]
+        for field, label, placeholder, icon in _KEY_PROVIDERS:
+            existing = api_keys.get(field, "")
+            new_val = st.text_input(
+                f"{icon} {label}",
+                value=existing,
+                type="password",
+                placeholder=placeholder,
+                key=f"apikey_{field}",
+            )
+            if new_val != existing:
+                api_keys[field] = new_val
+                st.session_state.api_keys = api_keys
+
+        if any(api_keys.values()):
+            st.success(f"✓ {sum(1 for v in api_keys.values() if v)} anahtar aktif")
+
+        st.divider()
+
+        # ── Groq & OpenRouter Hakkında ────────────────────────────────────────
+        with st.expander("💡 Ücretsiz Model Nasıl Kullanılır?"):
+            st.markdown("""
+**Groq (Ücretsiz, çok hızlı):**
+1. [console.groq.com](https://console.groq.com) → hesap oluştur
+2. API Keys → yeni anahtar üret
+3. Yukarıdaki Groq kutusuna yapıştır
+4. Model seçiciden Llama/Mixtral seç
+
+**OpenRouter (100+ model, bazıları ücretsiz):**
+1. [openrouter.ai](https://openrouter.ai) → hesap oluştur
+2. Keys → yeni anahtar üret (ücretsiz $1 kredi)
+3. Yukarıdaki OpenRouter kutusuna yapıştır
+4. Model seçiciden `:free` modeller seç
+
+**Gemini (Google — ücretsiz tier):**
+1. [aistudio.google.com](https://aistudio.google.com) → API Key al
+2. Google kutusuna yapıştır
+3. Gemini 2.0 Flash / 1.5 Flash seç
+
+**GLM Flash (ZhipuAI — ücretsiz):**
+1. [open.bigmodel.cn](https://open.bigmodel.cn) → kayıt ol
+2. API Keys → üret
+3. ZhipuAI kutusuna yapıştır, GLM-4 Flash seç
+""")
+
         # ── Pomodoro Focus Timer ──────────────────────────────────────────────
         st.markdown("**🍅 Pomodoro Fokus Zamanlayıcı**")
         st.caption("25 dk çalış, 5 dk mola. Odaklanmak için ideal.")
@@ -802,6 +985,16 @@ def _file_icon(name: str) -> str:
 
 
 # ── Main Layout ───────────────────────────────────────────────────────────────
+_hdr_mid = _active_model_id()
+_hdr_info = MODELS.get(_hdr_mid, {}) if _REGISTRY_OK else {}
+_hdr_icon = _hdr_info.get("icon", "🤖")
+_hdr_name = _hdr_info.get("short", _hdr_mid)
+_hdr_free = _hdr_info.get("free", False)
+_hdr_key = _active_api_key()
+_hdr_key_ok = bool(_hdr_key)
+_hdr_status_color = "#10b981" if _hdr_key_ok else "#f59e0b"
+_hdr_status = "API Hazır" if _hdr_key_ok else "API Anahtarı Gir"
+
 st.markdown(f"""
 <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0 16px;">
     <div>
@@ -809,7 +1002,12 @@ st.markdown(f"""
         <span style="margin-left:12px; font-size:13px; color:#94a3b8;">Session: {st.session_state.session_id[:8]}...</span>
     </div>
     <div style="display:flex; gap:8px; align-items:center;">
-        <span class="model-pill pill-{st.session_state.model}">{model_icon(st.session_state.model)} {st.session_state.model.upper()}</span>
+        <span style="background:#1e293b; border:1px solid #334155; border-radius:9999px;
+                     padding:4px 12px; font-size:12px; font-weight:600; color:#f8fafc;">
+            {_hdr_icon} {_hdr_name}
+            {"&nbsp;<span style='color:#10b981;font-size:10px;'>✓ Ücretsiz</span>" if _hdr_free else ""}
+        </span>
+        <span style="font-size:11px; color:{_hdr_status_color};">● {_hdr_status}</span>
         <span style="font-size:12px; color:#94a3b8;">{datetime.now().strftime('%H:%M')}</span>
     </div>
 </div>
@@ -899,7 +1097,12 @@ with tab_chat:
         })
 
         # Get AI response
-        with st.spinner(f"{model_icon(st.session_state.model)} {_thinking_msg()}"):
+        active_mid = _active_model_id()
+        active_key = _active_api_key()
+        sel_info = MODELS.get(active_mid, {}) if _REGISTRY_OK else {}
+        disp_name = sel_info.get("short", active_mid)
+
+        with st.spinner(f"{sel_info.get('icon', '🤖')} {disp_name} — {_thinking_msg()}"):
             history = [
                 {"role": m["role"], "content": m["content"]}
                 for m in st.session_state.messages[:-1]
@@ -907,6 +1110,8 @@ with tab_chat:
             result = api_post("/chat/message", {
                 "prompt": user_input,
                 "model": st.session_state.model,
+                "model_id": active_mid,
+                "api_key": active_key,
                 "messages": history,
                 "workspace_path": st.session_state.workspace_path,
             })
@@ -915,7 +1120,7 @@ with tab_chat:
         st.session_state.messages.append({
             "role": "assistant",
             "content": response_text,
-            "model": st.session_state.model,
+            "model": disp_name,
             "timestamp": datetime.now().strftime("%H:%M"),
         })
         st.session_state.msgs_sent += 1
@@ -1034,6 +1239,8 @@ with tab_editor:
                         result = api_post("/chat/explain", {
                             "code": edited,
                             "model": st.session_state.model,
+                            "model_id": _active_model_id(),
+                            "api_key": _active_api_key(),
                         })
                         if result:
                             st.info(result.get("explanation", ""))
@@ -1086,7 +1293,21 @@ with tab_generate:
         )
     with gcol2:
         st.markdown("**Options**")
-        gen_model = st.selectbox("Model", ["claude", "gemini", "glm"], key="gen_model")
+        # Generate tab: aktif model kullan ama override edilebilir
+        _gen_mid = _active_model_id()
+        _gen_info = MODELS.get(_gen_mid, {}) if _REGISTRY_OK else {}
+        st.markdown(f"""
+        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px;
+                    padding:8px 12px; font-size:12px; margin-bottom:8px;">
+            <div style="color:#f8fafc; font-weight:600;">
+                {_gen_info.get('icon','🤖')} {_gen_info.get('short', _gen_mid)}
+            </div>
+            <div style="color:#64748b; font-size:10px; margin-top:2px;">
+                {"✓ Ücretsiz" if _gen_info.get('free') else "Ücretli"} ·
+                Anahtarı ⚙️ Ayarlar'dan gir
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         gen_workspace = st.text_input("Workspace", value="workspace/generated", key="gen_workspace")
         include_tests = st.toggle("Include Tests", value=True)
         include_docs = st.toggle("Include Docs", value=True)
@@ -1106,11 +1327,16 @@ with tab_generate:
             if extras:
                 full_desc += "\n\nAlso: " + ". ".join(extras)
 
+            _gen_active_mid = _active_model_id()
+            _gen_active_key = _active_api_key()
+
             prog = st.progress(0, text=_thinking_msg())
             prog.progress(20, text="🏗️ Proje mimarisi hazırlanıyor...")
             result = api_post("/chat/generate-project", {
                 "description": full_desc,
-                "model": gen_model,
+                "model": st.session_state.model,
+                "model_id": _gen_active_mid,
+                "api_key": _gen_active_key,
                 "workspace_path": gen_workspace,
             })
             prog.progress(80, text="📁 Dosyalar yazılıyor...")
@@ -1144,7 +1370,9 @@ with tab_generate:
                 prog.progress(40, text="⚡ Chat ile üretiliyor...")
                 result = api_post("/chat/message", {
                     "prompt": f"Generate a complete project: {full_desc}\n\nFor each file use format: <FILE path=\"...\">content</FILE>",
-                    "model": gen_model,
+                    "model": st.session_state.model,
+                    "model_id": _gen_active_mid,
+                    "api_key": _gen_active_key,
                     "messages": [],
                     "workspace_path": gen_workspace,
                 })
