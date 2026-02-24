@@ -5,6 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  NEXT_PUBLIC_API_URL = "https://catsaly5893311.fly.dev"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
