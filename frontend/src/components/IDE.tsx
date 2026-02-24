@@ -51,6 +51,7 @@ function useResize(
 
 export default function IDE() {
   const {
+    sidebarOpen, toggleSidebar,
     sidebarWidth, setSidebarWidth,
     chatWidth, setChatWidth,
     terminalHeight, setTerminalHeight,
@@ -98,6 +99,19 @@ export default function IDE() {
 
         {/* Right buttons */}
         <button
+          onClick={toggleSidebar}
+          title="Dosya Gezgini"
+          style={{
+            background: sidebarOpen ? "rgba(99,102,241,0.15)" : "none",
+            border: "1px solid " + (sidebarOpen ? "#6366f1" : "transparent"),
+            borderRadius: 8, padding: "4px 8px", cursor: "pointer",
+            color: sidebarOpen ? "#a5b4fc" : "#94a3b8", display: "flex", alignItems: "center", gap: 4, fontSize: 12,
+          }}
+        >
+          <LayoutPanelLeft size={14} /> Gezgin
+        </button>
+
+        <button
           onClick={toggleTerminal}
           title="Terminal"
           style={{
@@ -127,15 +141,19 @@ export default function IDE() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
         {/* Sidebar: File Tree */}
-        <div style={{ width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
-          <FileTree />
-        </div>
+        {sidebarOpen && (
+          <>
+            <div style={{ width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #2d3748", overflow: "hidden", background: "#0f172a" }}>
+              <FileTree />
+            </div>
 
-        {/* Resize handle: sidebar */}
-        <div
-          className="resize-handle resize-handle-x"
-          onMouseDown={resizeSidebar}
-        />
+            {/* Resize handle: sidebar */}
+            <div
+              className="resize-handle resize-handle-x"
+              onMouseDown={resizeSidebar}
+            />
+          </>
+        )}
 
         {/* Center: Editor + Terminal */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>

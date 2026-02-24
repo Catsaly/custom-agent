@@ -40,6 +40,8 @@ interface IDEState {
   toggleSettings: () => void;
   terminalHeight: number;
   setTerminalHeight: (h: number) => void;
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
   sidebarWidth: number;
   setSidebarWidth: (w: number) => void;
   chatWidth: number;
@@ -108,6 +110,8 @@ export const useIDEStore = create<IDEState>()(
 
       showSettings: false,
       toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
+      sidebarOpen: true,
+      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       terminalHeight: 200,
       setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
       sidebarWidth: 240,
@@ -123,6 +127,7 @@ export const useIDEStore = create<IDEState>()(
         workspace: s.workspace,
         modelId: s.modelId,
         apiKeys: s.apiKeys,
+        sidebarOpen: s.sidebarOpen,
         sidebarWidth: s.sidebarWidth,
         chatWidth: s.chatWidth,
         terminalHeight: s.terminalHeight,
