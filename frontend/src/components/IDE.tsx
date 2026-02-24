@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useRef } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Settings as SettingsIcon, Github, LayoutPanelLeft, Terminal as TermIcon, Zap } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { MODELS } from "@/lib/types";
@@ -9,7 +10,7 @@ import AgentChat from "./AgentChat";
 import Terminal from "./Terminal";
 import Settings from "./Settings";
 
-function useResize(setter: (v: number) => void, direction: "x" | "y", min: number, max: number) {
+function useResize(setter: Dispatch<SetStateAction<number>>, direction: "x" | "y", min: number, max: number) {
   const dragging = useRef(false);
   const startVal = useRef(0);
   const startPos = useRef(0);
