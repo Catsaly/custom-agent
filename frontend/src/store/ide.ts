@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FileNode, ChatMessage, ApiKeys } from "@/lib/types";
 
+export interface TerminalLine {
+  text: string;
+  type: "cmd" | "output" | "error" | "info";
+}
+
 interface IDEState {
   // Local filesystem mode (File System Access API or webkitdirectory upload)
   localMode: boolean;
@@ -55,6 +60,11 @@ interface IDEState {
   setChatWidth: (w: number) => void;
   terminalOpen: boolean;
   toggleTerminal: () => void;
+
+  // Shared terminal lines (Terminal ↔ AgentChat)
+  terminalLines: TerminalLine[];
+  pushTerminalLine: (line: TerminalLine) => void;
+  clearTerminalLines: () => void;
 }
 
 export const useIDEStore = create<IDEState>()(
@@ -132,6 +142,14 @@ export const useIDEStore = create<IDEState>()(
       setChatWidth: (chatWidth) => set({ chatWidth }),
       terminalOpen: true,
       toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+
+      terminalLines: [
+        { text: "AI IDE Terminal — Hazır", type: "info" as const },
+      ],
+      pushTerminalLine: (line) =>
+        set((s) => ({ terminalLines: [...s.terminalLines.slice(-500), line] })),
+      clearTerminalLines: () =>
+        set({ terminalLines: [{ text: "Temizlendi", type: "info" as const }] }),
     }),
     {
       name: "ai-ide-state",

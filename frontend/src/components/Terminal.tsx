@@ -1,17 +1,15 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Terminal as TermIcon, X, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Terminal as TermIcon, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { useIDEStore } from "@/store/ide";
 import { streamTerminal } from "@/lib/api";
 
-interface Line { text: string; type: "cmd" | "output" | "error" | "info" }
-
 export default function Terminal() {
-  const { workspace, terminalOpen, toggleTerminal } = useIDEStore();
-  const [lines, setLines] = useState<Line[]>([
-    { text: "AI IDE Terminal — Hazır", type: "info" },
-    { text: `Workspace: ${workspace}`, type: "info" },
-  ]);
+  const {
+    workspace, terminalOpen, toggleTerminal,
+    terminalLines, pushTerminalLine, clearTerminalLines,
+  } = useIDEStore();
+
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
@@ -22,11 +20,7 @@ export default function Terminal() {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [lines]);
-
-  const append = useCallback((text: string, type: Line["type"] = "output") => {
-    setLines((l) => [...l, { text, type }]);
-  }, []);
+  }, [terminalLines]);
 
   const run = useCallback((cmd: string) => {
     if (!cmd.trim() || running) return;
@@ -34,18 +28,18 @@ export default function Terminal() {
     setRunning(true);
     setHistory((h) => [cmd, ...h.slice(0, 49)]);
     setHistIdx(-1);
-    append(`$ ${cmd}`, "cmd");
+    pushTerminalLine({ text: `$ ${cmd}`, type: "cmd" });
 
     abortRef.current = streamTerminal(
       cmd,
       workspace,
-      (line) => append(line, "output"),
+      (line) => pushTerminalLine({ text: line, type: "output" }),
       (code) => {
-        if (code !== 0) append(`Exit code: ${code}`, "error");
+        if (code !== 0) pushTerminalLine({ text: `Exit code: ${code}`, type: "error" });
         setRunning(false);
       },
     );
-  }, [running, workspace, append]);
+  }, [running, workspace, pushTerminalLine]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") { run(input); return; }
@@ -63,7 +57,7 @@ export default function Terminal() {
     }
     if (e.key === "c" && e.ctrlKey) {
       abortRef.current?.abort();
-      append("^C", "error");
+      pushTerminalLine({ text: "^C", type: "error" });
       setRunning(false);
     }
   };
@@ -78,10 +72,17 @@ export default function Terminal() {
         <TermIcon size={14} color="#94a3b8" />
         <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, flex: 1 }}>Terminal</span>
         <span style={{ fontSize: 11, color: "#4b5563" }}>{workspace}</span>
-        <button onClick={() => setLines([{ text: "Temizlendi", type: "info" }])} style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563", padding: 2 }}>
+        <button
+          onClick={clearTerminalLines}
+          title="Temizle"
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563", padding: 2 }}
+        >
           <Trash2 size={12} />
         </button>
-        <button onClick={toggleTerminal} style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563", padding: 2 }}>
+        <button
+          onClick={toggleTerminal}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563", padding: 2 }}
+        >
           {terminalOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>
       </div>
@@ -89,12 +90,21 @@ export default function Terminal() {
       {terminalOpen && (
         <>
           {/* Output */}
-          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "6px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
-            {lines.map((line, i) => (
-              <div key={i} style={{
-                color: line.type === "cmd" ? "#a5b4fc" : line.type === "error" ? "#f87171" : line.type === "info" ? "#6b7280" : "#d1fae5",
-                whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.5,
-              }}>
+          <div
+            ref={scrollRef}
+            style={{ flex: 1, overflowY: "auto", padding: "6px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}
+          >
+            {terminalLines.map((line, i) => (
+              <div
+                key={i}
+                style={{
+                  color: line.type === "cmd" ? "#a5b4fc"
+                    : line.type === "error" ? "#f87171"
+                    : line.type === "info" ? "#6b7280"
+                    : "#d1fae5",
+                  whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.5,
+                }}
+              >
                 {line.text}
               </div>
             ))}
@@ -104,7 +114,10 @@ export default function Terminal() {
           </div>
 
           {/* Input */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "4px 10px", borderTop: "1px solid #1e293b", flexShrink: 0,
+          }}>
             <span style={{ color: "#10b981", fontFamily: "monospace", fontSize: 12, flexShrink: 0 }}>
               {workspace} $
             </span>
@@ -117,7 +130,8 @@ export default function Terminal() {
               disabled={running}
               style={{
                 flex: 1, background: "transparent", border: "none",
-                outline: "none", color: "#e2e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 12,
+                outline: "none", color: "#e2e8f0",
+                fontFamily: "JetBrains Mono, monospace", fontSize: 12,
               }}
             />
           </div>

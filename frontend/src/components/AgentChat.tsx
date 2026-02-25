@@ -1,8 +1,11 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Trash2, Bot, User, Paperclip, X, FileText } from "lucide-react";
+import {
+  Send, Square, Trash2, Bot, User, Paperclip, X, FileText,
+  ChevronDown, FolderOpen, MonitorPlay, List,
+} from "lucide-react";
 import { useIDEStore } from "@/store/ide";
-import { streamAgent } from "@/lib/api";
+import { streamAgent, listFiles, streamTerminal } from "@/lib/api";
 import { MODELS } from "@/lib/types";
 import type { ChatMessage, ToolCall, Attachment } from "@/lib/types";
 import { ToolCallCard } from "./ToolCallView";
@@ -14,6 +17,9 @@ const ACCEPTED_TYPES = [
   ".html", ".css", ".xml", ".rs", ".go", ".java", ".cpp", ".c", ".h",
   "text/*",
 ].join(",");
+
+// Terminal araçları — output'u terminal panel'e de gönderir
+const TERMINAL_TOOLS = new Set(["run_command", "run_tests", "git_command"]);
 
 function AttachmentBadge({ att, onRemove }: { att: Attachment; onRemove?: () => void }) {
   const lines = att.content.split("\n").length;
@@ -38,7 +44,6 @@ function AttachmentBadge({ att, onRemove }: { att: Attachment; onRemove?: () => 
 }
 
 function renderContent(content: string) {
-  // Code blocks
   const parts = content.split(/(```[\s\S]*?```|`[^`]+`)/g);
   return parts.map((part, i) => {
     if (part.startsWith("```") && part.endsWith("```")) {
@@ -55,7 +60,6 @@ function renderContent(content: string) {
     if (part.startsWith("`") && part.endsWith("`")) {
       return <code key={i} className="chat-code">{part.slice(1, -1)}</code>;
     }
-    // Bold
     return (
       <span key={i} dangerouslySetInnerHTML={{
         __html: part
@@ -76,7 +80,6 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         <span>{new Date(msg.timestamp).toLocaleTimeString("tr", { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
 
-      {/* Eklenen dosyalar (kullanıcı mesajı) */}
       {isUser && msg.attachments && msg.attachments.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "flex-end" }}>
           {msg.attachments.map((att, i) => <AttachmentBadge key={i} att={att} />)}
@@ -102,21 +105,36 @@ export default function AgentChat() {
   const {
     messages, addMessage, updateLastMessage, clearMessages,
     modelId, apiKeys, workspace,
+    activeFile, fileContents,
+    terminalLines, pushTerminalLine,
   } = useIDEStore();
 
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [contextOpen, setContextOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contextRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Context dropdown dışına tıklanınca kapat
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
+        setContextOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const getApiKey = useCallback(() => {
     const info = MODELS[modelId];
@@ -129,7 +147,7 @@ export default function AgentChat() {
     setRunning(false);
   }, []);
 
-  /* ── File attachment ─────────────────────────────────────────────── */
+  /* ── Dosya ekleme ─────────────────────────────────────────────── */
   const handleFileAttach = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     const newAtts: Attachment[] = [];
@@ -137,7 +155,7 @@ export default function AgentChat() {
       try {
         const content = await file.text();
         newAtts.push({ name: file.name, content });
-      } catch { /* binary dosyayı atla */ }
+      } catch { /* binary atla */ }
     }));
     setAttachments((prev) => [...prev, ...newAtts]);
     e.target.value = "";
@@ -147,13 +165,93 @@ export default function AgentChat() {
     setAttachments((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  /* ── Context seçenekleri ──────────────────────────────────────── */
+  const addActiveFileContext = useCallback(() => {
+    if (!activeFile) return;
+    const content = fileContents[activeFile];
+    if (!content) return;
+    const ext = activeFile.split(".").pop() ?? "";
+    setAttachments((prev) => {
+      if (prev.some((a) => a.name === activeFile)) return prev;
+      return [...prev, { name: activeFile, content }];
+    });
+    setContextOpen(false);
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFile, fileContents]);
+
+  const addTerminalContext = useCallback(() => {
+    const last50 = terminalLines.slice(-50);
+    if (last50.length === 0) return;
+    const content = last50.map((l) => l.text).join("\n");
+    setAttachments((prev) => {
+      const name = "terminal-output.txt";
+      const filtered = prev.filter((a) => a.name !== name);
+      return [...filtered, { name, content }];
+    });
+    setContextOpen(false);
+    inputRef.current?.focus();
+  }, [terminalLines]);
+
+  const addFileListContext = useCallback(async () => {
+    try {
+      const data = await listFiles(workspace);
+      const lines: string[] = [];
+      const walk = (nodes: Array<{ type: string; name: string; path: string; children?: unknown[] }>, indent = "") => {
+        for (const n of nodes) {
+          lines.push(`${indent}${n.type === "dir" ? "📁" : "📄"} ${n.path}`);
+          if (n.children) walk(n.children as typeof nodes, indent + "  ");
+        }
+      };
+      walk(data.files ?? []);
+      const content = lines.join("\n") || "(boş workspace)";
+      setAttachments((prev) => {
+        const name = "file-list.txt";
+        const filtered = prev.filter((a) => a.name !== name);
+        return [...filtered, { name, content }];
+      });
+    } catch {
+      /* sessizce geç */
+    }
+    setContextOpen(false);
+    inputRef.current?.focus();
+  }, [workspace]);
+
+  /* ── /run slash komutu ────────────────────────────────────────── */
+  const handleSlashRun = useCallback((cmd: string) => {
+    pushTerminalLine({ text: `$ ${cmd}`, type: "cmd" });
+    // Terminal panel'i aç
+    const store = useIDEStore.getState();
+    if (!store.terminalOpen) store.toggleTerminal();
+
+    streamTerminal(
+      cmd,
+      workspace,
+      (line) => pushTerminalLine({ text: line, type: "output" }),
+      (code) => {
+        if (code !== 0) pushTerminalLine({ text: `Exit code: ${code}`, type: "error" });
+      },
+    );
+  }, [workspace, pushTerminalLine]);
+
+  /* ── Gönder ───────────────────────────────────────────────────── */
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || running) return;
+
+    // /run komutu mu?
+    if (text.startsWith("/run ")) {
+      const cmd = text.slice(5).trim();
+      if (cmd) {
+        setInput("");
+        handleSlashRun(cmd);
+        return;
+      }
+    }
+
     setInput("");
     setRunning(true);
 
-    // Dosya içeriklerini mesaja ekle
     let fullContent = text;
     if (attachments.length > 0) {
       const blocks = attachments.map((att) => {
@@ -175,7 +273,6 @@ export default function AgentChat() {
     };
     addMessage(userMsg);
 
-    // Build AI message placeholder
     const aiMsg: ChatMessage = {
       id: (Date.now() + 1).toString(),
       role: "assistant",
@@ -185,13 +282,12 @@ export default function AgentChat() {
     };
     addMessage(aiMsg);
 
-    // API messages history
     const apiMsgs = [...messages, userMsg].map((m) => ({
       role: m.role,
       content: m.content || "[tool operations]",
     }));
 
-    const activeToolCallIds = new Map<string, string>(); // tool_id -> toolCall.id
+    const activeToolCallIds = new Map<string, string>();
 
     abortRef.current = streamAgent(
       apiMsgs,
@@ -218,6 +314,11 @@ export default function AgentChat() {
             ...msg,
             toolCalls: [...(msg.toolCalls ?? []), tc],
           }));
+          // Terminal araçları başlarken terminal'e göster
+          if (TERMINAL_TOOLS.has(ev.tool as string)) {
+            const cmd = (ev.input as Record<string, string>)?.command ?? ev.tool as string;
+            pushTerminalLine({ text: `[AI] $ ${cmd}`, type: "cmd" });
+          }
         } else if (ev.type === "tool_result") {
           const tcId = activeToolCallIds.get(ev.id as string);
           updateLastMessage((msg) => ({
@@ -228,6 +329,14 @@ export default function AgentChat() {
                 : tc
             ),
           }));
+          // Terminal araç çıktısını terminal'e yansıt
+          const toolName = ev.tool as string;
+          if (TERMINAL_TOOLS.has(toolName)) {
+            const output = (ev.output as string) ?? "";
+            output.split("\n").slice(0, 100).forEach((line) => {
+              pushTerminalLine({ text: line, type: "output" });
+            });
+          }
         } else if (ev.type === "done") {
           if (ev.content) {
             updateLastMessage((msg) => ({
@@ -243,7 +352,8 @@ export default function AgentChat() {
       },
       () => setRunning(false),
     );
-  }, [input, attachments, running, messages, modelId, getApiKey, workspace, addMessage, updateLastMessage]);
+  }, [input, attachments, running, messages, modelId, getApiKey, workspace,
+      addMessage, updateLastMessage, handleSlashRun, pushTerminalLine]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -255,6 +365,7 @@ export default function AgentChat() {
   const modelInfo = MODELS[modelId];
   const hasKey = !!getApiKey();
   const canSend = (input.trim().length > 0 || attachments.length > 0) && !running;
+  const isSlashRun = input.trim().startsWith("/run ");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -271,7 +382,10 @@ export default function AgentChat() {
             {modelInfo.free && " ✓"}
           </span>
         )}
-        <span style={{ width: 8, height: 8, borderRadius: "50%", background: hasKey ? "#10b981" : "#ef4444", display: "inline-block" }} title={hasKey ? "API hazır" : "API anahtarı gerekli"} />
+        <span
+          style={{ width: 8, height: 8, borderRadius: "50%", background: hasKey ? "#10b981" : "#ef4444", display: "inline-block" }}
+          title={hasKey ? "API hazır" : "API anahtarı gerekli"}
+        />
         <button onClick={clearMessages} title="Temizle" style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563", padding: 2 }}>
           <Trash2 size={13} />
         </button>
@@ -286,7 +400,7 @@ export default function AgentChat() {
           <div style={{ textAlign: "center", padding: "40px 16px", color: "#374151" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🤖</div>
             <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-              14 araçla çalışan AI — 📎 dosya ekleyebilirsin:
+              14 araçla çalışan AI — 📎 dosya ekle veya 📋 context seç:
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#4b5563" }}>
               {[
@@ -297,6 +411,7 @@ export default function AgentChat() {
                 "🔀 Git işlemleri",
                 "🔍 Web araştır & URL oku",
                 "📎 Dosya ekle — AI direkt analiz eder",
+                "💡 /run <komut> — terminalde çalıştır",
               ].map((t) => (
                 <div key={t} style={{ background: "#1e293b", borderRadius: 8, padding: "6px 12px", textAlign: "left" }}>{t}</div>
               ))}
@@ -323,7 +438,107 @@ export default function AgentChat() {
           </div>
         )}
 
+        {/* /run ipucu */}
+        {isSlashRun && (
+          <div style={{
+            marginBottom: 4, fontSize: 11, color: "#10b981",
+            background: "rgba(16,185,129,0.08)", borderRadius: 6,
+            padding: "3px 8px", display: "flex", alignItems: "center", gap: 4,
+          }}>
+            <MonitorPlay size={11} />
+            Terminal&apos;de çalıştır: <strong>{input.slice(5)}</strong>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+          {/* Context menü */}
+          <div ref={contextRef} style={{ position: "relative", flexShrink: 0 }}>
+            <button
+              onClick={() => setContextOpen((v) => !v)}
+              disabled={running}
+              title="Context ekle"
+              style={{
+                background: "none", border: "1px solid #334155", borderRadius: 8,
+                padding: "7px 8px", cursor: running ? "not-allowed" : "pointer",
+                color: contextOpen ? "#6366f1" : "#64748b",
+                display: "flex", alignItems: "center", gap: 3,
+                opacity: running ? 0.5 : 1,
+              }}
+            >
+              <FolderOpen size={14} />
+              <ChevronDown size={10} />
+            </button>
+
+            {contextOpen && (
+              <div style={{
+                position: "absolute", bottom: "calc(100% + 6px)", left: 0,
+                background: "#1e293b", border: "1px solid #334155",
+                borderRadius: 10, padding: "4px", minWidth: 200, zIndex: 50,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+              }}>
+                <button
+                  onClick={addActiveFileContext}
+                  disabled={!activeFile}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", background: "none", border: "none",
+                    borderRadius: 7, padding: "7px 10px", cursor: activeFile ? "pointer" : "not-allowed",
+                    color: activeFile ? "#e2e8f0" : "#4b5563", fontSize: 12, textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { if (activeFile) (e.currentTarget as HTMLElement).style.background = "#2d3748"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                >
+                  <FileText size={13} color="#6366f1" />
+                  <span>
+                    <div style={{ fontWeight: 600 }}>Aktif dosyayı ekle</div>
+                    <div style={{ fontSize: 10, color: "#64748b" }}>
+                      {activeFile ? activeFile.split("/").pop() : "Editörde dosya açık değil"}
+                    </div>
+                  </span>
+                </button>
+
+                <button
+                  onClick={addTerminalContext}
+                  disabled={terminalLines.length <= 1}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", background: "none", border: "none",
+                    borderRadius: 7, padding: "7px 10px",
+                    cursor: terminalLines.length > 1 ? "pointer" : "not-allowed",
+                    color: terminalLines.length > 1 ? "#e2e8f0" : "#4b5563",
+                    fontSize: 12, textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { if (terminalLines.length > 1) (e.currentTarget as HTMLElement).style.background = "#2d3748"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                >
+                  <MonitorPlay size={13} color="#10b981" />
+                  <span>
+                    <div style={{ fontWeight: 600 }}>Terminal çıktısını ekle</div>
+                    <div style={{ fontSize: 10, color: "#64748b" }}>Son {Math.min(50, terminalLines.length)} satır</div>
+                  </span>
+                </button>
+
+                <button
+                  onClick={addFileListContext}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", background: "none", border: "none",
+                    borderRadius: 7, padding: "7px 10px", cursor: "pointer",
+                    color: "#e2e8f0", fontSize: 12, textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#2d3748"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                >
+                  <List size={13} color="#f59e0b" />
+                  <span>
+                    <div style={{ fontWeight: 600 }}>Dosya listesini ekle</div>
+                    <div style={{ fontSize: 10, color: "#64748b" }}>Workspace ağacı</div>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Dosya ekleme butonu */}
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -353,7 +568,11 @@ export default function AgentChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={attachments.length > 0 ? "Dosya hakkında görev ver… (Enter = gönder)" : "Ne yapalım? (Enter = gönder, Shift+Enter = yeni satır)"}
+            placeholder={
+              attachments.length > 0
+                ? "Dosya hakkında görev ver… (Enter = gönder)"
+                : "Ne yapalım? /run <komut> veya mesaj yaz (Shift+Enter = yeni satır)"
+            }
             rows={2}
             style={{
               flex: 1, background: "#1e293b", border: "1px solid #334155",
@@ -368,14 +587,14 @@ export default function AgentChat() {
             onClick={running ? stop : send}
             disabled={!canSend && !running}
             style={{
-              background: running ? "#ef4444" : "#6366f1",
+              background: running ? "#ef4444" : isSlashRun ? "#10b981" : "#6366f1",
               border: "none", borderRadius: 10, padding: "8px 12px",
               color: "white", cursor: "pointer", display: "flex",
               alignItems: "center", gap: 4, fontSize: 13, fontWeight: 600,
               opacity: !canSend && !running ? 0.5 : 1,
             }}
           >
-            {running ? <Square size={16} /> : <Send size={16} />}
+            {running ? <Square size={16} /> : isSlashRun ? <MonitorPlay size={16} /> : <Send size={16} />}
           </button>
         </div>
         {!hasKey && modelInfo && !modelInfo.free && (
