@@ -2,8 +2,12 @@ FROM python:3.11-slim
 
 # System deps
 RUN apt-get update && apt-get install -y \
-    git curl build-essential \
+    git curl build-essential unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
 
 WORKDIR /app
 

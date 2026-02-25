@@ -147,6 +147,55 @@ class SupabaseClient:
         await asyncio.to_thread(_call)
         return True
 
+    # ── Workspace File Persistence ────────────────────────────────────────────
+
+    async def save_workspace_file(
+        self, workspace: str, path: str, content: str
+    ) -> dict:
+        """Bir workspace dosyasını Supabase'e kaydeder (upsert)."""
+        def _call():
+            return (
+                self._get_client()
+                .table("workspace_files")
+                .upsert({
+                    "workspace": workspace,
+                    "path": path,
+                    "content": content,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }, on_conflict="workspace,path")
+                .execute()
+            )
+        result = await asyncio.to_thread(_call)
+        return result.data[0] if result.data else {}
+
+    async def load_workspace_files(self, workspace: str) -> list[dict]:
+        """Workspace'e ait tüm dosyaları getirir: [{path, content}, ...]"""
+        def _call():
+            return (
+                self._get_client()
+                .table("workspace_files")
+                .select("path,content,updated_at")
+                .eq("workspace", workspace)
+                .order("path")
+                .execute()
+            )
+        result = await asyncio.to_thread(_call)
+        return result.data or []
+
+    async def delete_workspace_file(self, workspace: str, path: str) -> bool:
+        """Supabase'den tek dosyayı siler."""
+        def _call():
+            return (
+                self._get_client()
+                .table("workspace_files")
+                .delete()
+                .eq("workspace", workspace)
+                .eq("path", path)
+                .execute()
+            )
+        await asyncio.to_thread(_call)
+        return True
+
     async def get_auto_save(self, session_id: str) -> Optional[dict]:
         def _call():
             return (

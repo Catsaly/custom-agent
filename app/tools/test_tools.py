@@ -1,10 +1,16 @@
 """Code testing and execution tools."""
 import asyncio
+import shutil
 import subprocess
 import tempfile
 import os
 from pathlib import Path
 from typing import Optional
+
+# Bun kurulu mu kontrol et (başlangıçta bir kez)
+_BUN_PATH: str | None = shutil.which("bun") or (
+    "/root/.bun/bin/bun" if Path("/root/.bun/bin/bun").exists() else None
+)
 
 
 class TestTools:
@@ -45,8 +51,8 @@ class TestTools:
     ) -> dict:
         if language == "python":
             return await self._run_python(code, timeout)
-        elif language in ("javascript", "typescript", "node"):
-            return await self._run_node(code, language, timeout)
+        elif language in ("javascript", "typescript", "node", "bun"):
+            return await self._run_js(code, language, timeout)
         return {"success": False, "output": "", "error": f"Language {language} not supported for direct execution"}
 
     async def _run_python(self, code: str, timeout: int) -> dict:
@@ -70,16 +76,23 @@ class TestTools:
         finally:
             os.unlink(tmp_path)
 
-    async def _run_node(self, code: str, language: str, timeout: int) -> dict:
+    async def _run_js(self, code: str, language: str, timeout: int) -> dict:
+        """JS/TS çalıştırır. Bun varsa Bun kullanır, yoksa node/npx fallback."""
         suffix = ".ts" if language == "typescript" else ".js"
         with tempfile.NamedTemporaryFile(suffix=suffix, mode="w", delete=False) as f:
             f.write(code)
             tmp_path = f.name
         try:
-            if language == "typescript":
+            if _BUN_PATH:
+                cmd = [_BUN_PATH, "run", tmp_path]
+                runtime = "bun"
+            elif language == "typescript":
                 cmd = ["npx", "ts-node", tmp_path]
+                runtime = "ts-node"
             else:
                 cmd = ["node", tmp_path]
+                runtime = "node"
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -90,6 +103,7 @@ class TestTools:
                 "success": proc.returncode == 0,
                 "output": stdout.decode("utf-8", errors="replace"),
                 "error": stderr.decode("utf-8", errors="replace"),
+                "runtime": runtime,
             }
         except asyncio.TimeoutError:
             return {"success": False, "output": "", "error": f"Timeout after {timeout}s"}

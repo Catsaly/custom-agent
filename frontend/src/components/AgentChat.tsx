@@ -566,19 +566,24 @@ export default function AgentChat() {
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // auto-expand: sıfırla sonra scrollHeight'a ayarla
+              e.target.style.height = "36px";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            }}
             onKeyDown={handleKeyDown}
             placeholder={
               attachments.length > 0
-                ? "Dosya hakkında görev ver… (Enter = gönder)"
-                : "Ne yapalım? /run <komut> veya mesaj yaz (Shift+Enter = yeni satır)"
+                ? "Görev ver… (Enter = gönder)"
+                : "/run <komut> veya mesaj yaz"
             }
-            rows={2}
+            rows={1}
             style={{
               flex: 1, background: "#1e293b", border: "1px solid #334155",
               borderRadius: 10, padding: "8px 12px", color: "#e2e8f0",
               fontSize: 13, resize: "none", outline: "none", fontFamily: "inherit",
-              lineHeight: 1.5,
+              lineHeight: 1.5, minHeight: 36, maxHeight: 120, overflowY: "auto",
             }}
             onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
             onBlur={(e) => (e.target.style.borderColor = "#334155")}

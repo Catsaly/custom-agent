@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 from app.ai.ide_agent import IDEAgent, dispatch_tool
 from app.ai.model_registry import resolve_model_id
+from app.db.supabase_client import SupabaseClient
+
+_db = SupabaseClient()
 
 router = APIRouter(prefix="/ide", tags=["IDE"])
 _agent = IDEAgent()
@@ -44,6 +47,10 @@ class CommandRequest(BaseModel):
     command: str
     workspace: str = "default"
     timeout: int = 60
+
+
+class WorkspaceSyncRequest(BaseModel):
+    workspace: str = "default"
 
 
 # ── Agent SSE Stream ──────────────────────────────────────────────────────────
@@ -126,16 +133,21 @@ async def read_file(path: str, workspace: str = "default"):
 
 @router.post("/files/write")
 async def write_file(req: FileWriteRequest):
-    """Dosya oluşturur veya günceller."""
+    """Dosya oluşturur veya günceller. Supabase varsa arka planda sync eder."""
     target = WORKSPACE_ROOT / req.workspace / req.path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(req.content, encoding="utf-8")
+    if _db.available:
+        import asyncio as _asyncio
+        _asyncio.create_task(
+            _db.save_workspace_file(req.workspace, req.path, req.content)
+        )
     return {"ok": True, "path": req.path}
 
 
 @router.delete("/files/delete")
 async def delete_file(path: str, workspace: str = "default"):
-    """Dosya siler."""
+    """Dosya siler. Supabase'den de kaldırır."""
     target = WORKSPACE_ROOT / workspace / path
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"Dosya bulunamadı: {path}")
@@ -144,6 +156,9 @@ async def delete_file(path: str, workspace: str = "default"):
         shutil.rmtree(target)
     else:
         target.unlink()
+    if _db.available:
+        import asyncio as _asyncio
+        _asyncio.create_task(_db.delete_workspace_file(workspace, path))
     return {"ok": True, "path": path}
 
 
@@ -157,6 +172,61 @@ async def rename_file(req: FileRenameRequest):
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
     return {"ok": True, "old": req.old_path, "new": req.new_path}
+
+
+# ── Workspace Persistence (Supabase) ─────────────────────────────────────────
+
+@router.post("/workspace/push")
+async def push_workspace(req: WorkspaceSyncRequest):
+    """Disk'teki workspace dosyalarını Supabase'e yükler (push)."""
+    if not _db.available:
+        raise HTTPException(status_code=503, detail="Supabase yapılandırılmamış")
+    base = WORKSPACE_ROOT / req.workspace
+    if not base.exists():
+        raise HTTPException(status_code=404, detail=f"Workspace bulunamadı: {req.workspace}")
+
+    saved, skipped = 0, 0
+    for file_path in base.rglob("*"):
+        if not file_path.is_file():
+            continue
+        if any(p.startswith(".") for p in file_path.parts):
+            continue
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            rel = str(file_path.relative_to(base))
+            await _db.save_workspace_file(req.workspace, rel, content)
+            saved += 1
+        except Exception:
+            skipped += 1
+
+    return {"ok": True, "saved": saved, "skipped": skipped, "workspace": req.workspace}
+
+
+@router.post("/workspace/pull")
+async def pull_workspace(req: WorkspaceSyncRequest):
+    """Supabase'deki workspace dosyalarını diske indirir (pull)."""
+    if not _db.available:
+        raise HTTPException(status_code=503, detail="Supabase yapılandırılmamış")
+
+    files = await _db.load_workspace_files(req.workspace)
+    base = WORKSPACE_ROOT / req.workspace
+    restored = 0
+    for f in files:
+        target = base / f["path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f["content"], encoding="utf-8")
+        restored += 1
+
+    return {"ok": True, "restored": restored, "workspace": req.workspace}
+
+
+@router.get("/workspace/status")
+async def workspace_status(workspace: str = "default"):
+    """Supabase'de bu workspace için kaç dosya kayıtlı."""
+    if not _db.available:
+        return {"supabase": False, "files": 0}
+    files = await _db.load_workspace_files(workspace)
+    return {"supabase": True, "files": len(files), "workspace": workspace}
 
 
 # ── Terminal / Command ────────────────────────────────────────────────────────
