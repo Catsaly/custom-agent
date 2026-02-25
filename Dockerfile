@@ -17,8 +17,8 @@ COPY . .
 # Create workspace dir
 RUN mkdir -p workspace/default workspace/uploads
 
-# Expose ports
-EXPOSE 8000 8501
+# Expose port
+EXPOSE 8000
 
 # Default: run both services
 CMD ["uvicorn", "app.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
