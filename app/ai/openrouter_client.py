@@ -10,7 +10,7 @@ import asyncio
 from app.config import settings
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-_DEFAULT_MODEL = "meta-llama/llama-3.2-11b-vision-instruct:free"
+_DEFAULT_MODEL = "google/gemini-2.0-flash-exp:free"
 
 
 class OpenRouterClient:

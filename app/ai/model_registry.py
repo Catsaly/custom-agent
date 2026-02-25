@@ -41,10 +41,20 @@ MODELS: dict[str, dict] = {
     },
 
     # ── Gemini (Google) ───────────────────────────────────────────────────────
-    "gemini-2.0-flash-exp": {
+    "gemini-2.0-flash": {
         "provider": "gemini",
         "display": "Gemini 2.0 Flash",
         "short": "Gemini 2.0",
+        "free": True,
+        "key_field": "google",
+        "icon": "💎",
+        "color": "#4285f4",
+        "group": "Gemini",
+    },
+    "gemini-2.0-flash-exp": {
+        "provider": "gemini",
+        "display": "Gemini 2.0 Flash Exp",
+        "short": "Gemini 2.0 Exp",
         "free": True,
         "key_field": "google",
         "icon": "💎",
@@ -157,40 +167,30 @@ MODELS: dict[str, dict] = {
     },
 
     # ── OpenRouter (Ücretsiz modeller) ───────────────────────────────────────
-    "meta-llama/llama-3.2-11b-vision-instruct:free": {
+    "google/gemini-2.0-flash-exp:free": {
         "provider": "openrouter",
-        "display": "Llama 3.2 11B Vision (OR)",
-        "short": "Llama 3.2 11B",
+        "display": "Gemini 2.0 Flash (OR)",
+        "short": "Gemini 2.0",
         "free": True,
         "key_field": "openrouter",
         "icon": "🌐",
         "color": "#059669",
         "group": "OpenRouter",
     },
-    "microsoft/phi-3.5-mini-128k-instruct:free": {
+    "meta-llama/llama-3.3-70b-instruct:free": {
         "provider": "openrouter",
-        "display": "Phi-3.5 Mini 128K (OR)",
-        "short": "Phi-3.5 Mini",
+        "display": "Llama 3.3 70B (OR)",
+        "short": "Llama 3.3 70B",
         "free": True,
         "key_field": "openrouter",
         "icon": "🌐",
         "color": "#059669",
         "group": "OpenRouter",
     },
-    "google/gemma-2-9b-it:free": {
+    "deepseek/deepseek-chat-v3-0324:free": {
         "provider": "openrouter",
-        "display": "Gemma 2 9B (OR)",
-        "short": "Gemma 2 9B",
-        "free": True,
-        "key_field": "openrouter",
-        "icon": "🌐",
-        "color": "#059669",
-        "group": "OpenRouter",
-    },
-    "qwen/qwen-2.5-72b-instruct:free": {
-        "provider": "openrouter",
-        "display": "Qwen 2.5 72B (OR)",
-        "short": "Qwen 2.5 72B",
+        "display": "DeepSeek V3 (OR)",
+        "short": "DeepSeek V3",
         "free": True,
         "key_field": "openrouter",
         "icon": "🌐",
@@ -207,10 +207,40 @@ MODELS: dict[str, dict] = {
         "color": "#059669",
         "group": "OpenRouter",
     },
-    "mistralai/mistral-7b-instruct:free": {
+    "qwen/qwq-32b:free": {
         "provider": "openrouter",
-        "display": "Mistral 7B (OR)",
-        "short": "Mistral 7B",
+        "display": "QwQ 32B (OR)",
+        "short": "QwQ 32B",
+        "free": True,
+        "key_field": "openrouter",
+        "icon": "🌐",
+        "color": "#059669",
+        "group": "OpenRouter",
+    },
+    "qwen/qwen-2.5-72b-instruct:free": {
+        "provider": "openrouter",
+        "display": "Qwen 2.5 72B (OR)",
+        "short": "Qwen 2.5 72B",
+        "free": True,
+        "key_field": "openrouter",
+        "icon": "🌐",
+        "color": "#059669",
+        "group": "OpenRouter",
+    },
+    "microsoft/phi-4:free": {
+        "provider": "openrouter",
+        "display": "Phi-4 (OR)",
+        "short": "Phi-4",
+        "free": True,
+        "key_field": "openrouter",
+        "icon": "🌐",
+        "color": "#059669",
+        "group": "OpenRouter",
+    },
+    "mistralai/mistral-small-3.1-24b-instruct:free": {
+        "provider": "openrouter",
+        "display": "Mistral Small 3.1 24B (OR)",
+        "short": "Mistral Small 3.1",
         "free": True,
         "key_field": "openrouter",
         "icon": "🌐",
@@ -281,7 +311,7 @@ def get_display_name(model_id: str) -> str:
 
 LEGACY_MAP = {
     "claude": "claude-opus-4-6",
-    "gemini": "gemini-2.0-flash-exp",
+    "gemini": "gemini-2.0-flash",
     "glm": "glm-4-plus",
 }
 
