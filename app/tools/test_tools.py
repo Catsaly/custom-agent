@@ -1,11 +1,18 @@
 """Code testing and execution tools."""
 import asyncio
+import functools
 import shutil
 import subprocess
 import tempfile
 import os
 from pathlib import Path
 from typing import Optional
+
+
+@functools.lru_cache(maxsize=None)
+def _check_bun() -> bool:
+    """Cached check — shutil.which runs only once for the process lifetime."""
+    return shutil.which("bun") is not None
 
 
 class TestTools:
@@ -72,7 +79,7 @@ class TestTools:
             os.unlink(tmp_path)
 
     def _bun_available(self) -> bool:
-        return shutil.which("bun") is not None
+        return _check_bun()
 
     async def _run_node(self, code: str, language: str, timeout: int) -> dict:
         suffix = ".ts" if language == "typescript" else ".js"
@@ -81,8 +88,12 @@ class TestTools:
             tmp_path = f.name
         try:
             if language == "typescript":
-                # Bun natively supports TypeScript; fall back to npx ts-node
-                cmd = ["bun", "run", tmp_path] if self._bun_available() else ["npx", "ts-node", tmp_path]
+                if self._bun_available():
+                    cmd = ["bun", "run", tmp_path]
+                elif shutil.which("ts-node"):
+                    cmd = ["ts-node", tmp_path]
+                else:
+                    return {"success": False, "output": "", "error": "TypeScript runtime not found. Install bun or ts-node."}
             else:
                 # Prefer bun for speed; fall back to node
                 cmd = ["bun", "run", tmp_path] if self._bun_available() else ["node", tmp_path]
