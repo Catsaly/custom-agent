@@ -85,6 +85,7 @@ export function streamAgent(
           if (line.startsWith("data: ")) {
             try {
               const ev = JSON.parse(line.slice(6));
+              if (ev.type === "error") { onError(ev.content ?? String(ev)); onDone(); return; }
               onEvent(ev);
               if (ev.type === "end" || ev.type === "done") { onDone(); return; }
             } catch {}

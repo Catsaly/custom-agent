@@ -6,11 +6,17 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface Attachment {
+  name: string;
+  content: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   toolCalls?: ToolCall[];
+  attachments?: Attachment[];
   timestamp: Date;
 }
 
