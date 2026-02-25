@@ -1,5 +1,12 @@
 import type { FileNode } from "./types";
 
+// File System Access API - TypeScript DOM lib eksik tip bildirimi
+declare global {
+  interface FileSystemDirectoryHandle {
+    values(): AsyncIterableIterator<FileSystemHandle>;
+  }
+}
+
 /** File System Access API (Chrome/Edge/Safari 15.2+) supported? */
 export const hasLocalFSSupport =
   typeof window !== "undefined" && "showDirectoryPicker" in window;
