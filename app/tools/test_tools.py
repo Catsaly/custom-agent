@@ -1,5 +1,6 @@
 """Code testing and execution tools."""
 import asyncio
+import shutil
 import subprocess
 import tempfile
 import os
@@ -70,6 +71,9 @@ class TestTools:
         finally:
             os.unlink(tmp_path)
 
+    def _bun_available(self) -> bool:
+        return shutil.which("bun") is not None
+
     async def _run_node(self, code: str, language: str, timeout: int) -> dict:
         suffix = ".ts" if language == "typescript" else ".js"
         with tempfile.NamedTemporaryFile(suffix=suffix, mode="w", delete=False) as f:
@@ -77,9 +81,11 @@ class TestTools:
             tmp_path = f.name
         try:
             if language == "typescript":
-                cmd = ["npx", "ts-node", tmp_path]
+                # Bun natively supports TypeScript; fall back to npx ts-node
+                cmd = ["bun", "run", tmp_path] if self._bun_available() else ["npx", "ts-node", tmp_path]
             else:
-                cmd = ["node", tmp_path]
+                # Prefer bun for speed; fall back to node
+                cmd = ["bun", "run", tmp_path] if self._bun_available() else ["node", tmp_path]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -121,6 +127,10 @@ class TestTools:
         if (base / "pytest.ini").exists() or (base / "pyproject.toml").exists():
             return "python -m pytest -v"
         if (base / "package.json").exists():
+            # Bun projects: bun.lockb or bunfig.toml signals a Bun workspace
+            is_bun_project = (base / "bun.lockb").exists() or (base / "bunfig.toml").exists()
+            if is_bun_project and self._bun_available():
+                return "bun test"
             return "npm test"
         if (base / "Makefile").exists():
             return "make test"
