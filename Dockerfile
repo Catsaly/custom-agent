@@ -21,4 +21,4 @@ RUN mkdir -p workspace/default workspace/uploads
 EXPOSE 8000 8501
 
 # Default: run both services
-CMD ["python", "main.py"]
+CMD ["uvicorn", "app.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
